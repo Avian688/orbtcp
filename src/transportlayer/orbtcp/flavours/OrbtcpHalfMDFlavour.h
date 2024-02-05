@@ -13,8 +13,8 @@
 // along with this program.  If not, see http://www.gnu.org/licenses/.
 // 
 
-#ifndef TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPFLAVOUR_H_
-#define TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPFLAVOURHALFMD_H_
+#ifndef TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPHALFMDFLAVOUR_H_
+#define TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPHALFMDFLAVOUR_H_
 
 #include "../../../common/IntTag_m.h"
 #include "../OrbtcpConnection.h"
@@ -24,17 +24,17 @@ namespace inet {
 namespace tcp {
 
 /**
- * State variables for Orbtcp.
+ * State variables for OrbtcpHalfMD.
  */
-typedef OrbtcpFamilyStateVariables OrbtcpStateVariables;
+typedef OrbtcpFamilyStateVariables OrbtcpHalfMDStateVariables;
 
 /**
- * Implements OrbTCP.
+ * Implements OrbTCPHalfMD.
  */
-class OrbtcpFlavour : public OrbtcpFamily
+class OrbtcpHalfMDFlavour : public OrbtcpFamily
 {
   protected:
-    OrbtcpStateVariables *& state;
+    OrbtcpHalfMDStateVariables *& state;
 
     static simsignal_t txRateSignal; // will record load
     static simsignal_t tauSignal; // will record total number of RTOs
@@ -53,17 +53,17 @@ class OrbtcpFlavour : public OrbtcpFamily
     simtime_t rtt;
     simtime_t estimatedRtt;
     bool initPackets;
-    /** Create and return a OrbtcpStateVariables object. */
+    /** Create and return a OrbtcpHalfMDStateVariables object. */
     virtual TcpStateVariables *createStateVariables() override
     {
-        return new OrbtcpStateVariables();
+        return new OrbtcpHalfMDStateVariables();
     }
 
     virtual void initialize() override;
 
   public:
     /** Constructor */
-    OrbtcpFlavour();
+    OrbtcpHalfMDFlavour();
 
     virtual void established(bool active) override;
 

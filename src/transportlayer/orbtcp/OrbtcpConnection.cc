@@ -108,9 +108,10 @@ void OrbtcpConnection::configureStateVariables()
         std::string algorithmName2f = "OrbtcpNoSSAvgRttAIFlavour";
         std::string algorithmName2g = "OrbtcpTauUFlavour";
         std::string algorithmName2h = "OrbtcpEstRttAIFlavour";
+        std::string algorithmName2i = "OrbtcpHalfMDFlavour";
         std::string algorithmName3 = tcpMain->par("tcpAlgorithmClass");
 
-        if (algorithmName1 != algorithmName3 && algorithmName2 != algorithmName3 && algorithmName2b != algorithmName3 && algorithmName2c != algorithmName3 && algorithmName2d != algorithmName3 && algorithmName2e != algorithmName3 && algorithmName2f != algorithmName3 && algorithmName2g != algorithmName3 && algorithmName2h != algorithmName3) { // TODO add additional checks for new SACK supporting algorithms here once they are implemented
+        if (algorithmName1 != algorithmName3 && algorithmName2 != algorithmName3 && algorithmName2b != algorithmName3 && algorithmName2c != algorithmName3 && algorithmName2d != algorithmName3 && algorithmName2e != algorithmName3 && algorithmName2f != algorithmName3 && algorithmName2g != algorithmName3 && algorithmName2h != algorithmName3 && algorithmName2i != algorithmName3) { // TODO add additional checks for new SACK supporting algorithms here once they are implemented
             EV_DEBUG << "If you want to use TCP SACK please set tcpAlgorithmClass to TcpReno\n";
             ASSERT(false);
         }
