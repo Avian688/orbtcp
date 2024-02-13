@@ -7,7 +7,7 @@
 #include <algorithm> // min,max
 
 #include "inet/transportlayer/tcp/Tcp.h"
-#include "OrbtcpFlavour.h"
+#include "OrbtcpAIorMDFlavour.h"
 
 namespace inet {
 namespace tcp {
@@ -15,27 +15,27 @@ namespace tcp {
 #define MIN_REXMIT_TIMEOUT     1.0   // 1s
 #define MAX_REXMIT_TIMEOUT     240   // 2 * MSL (RFC 1122)
 
-Register_Class(OrbtcpFlavour);
+Register_Class(OrbtcpAIorMDFlavour);
 
-simsignal_t OrbtcpFlavour::txRateSignal = cComponent::registerSignal("txRate");
-simsignal_t OrbtcpFlavour::tauSignal = cComponent::registerSignal("tau");
-simsignal_t OrbtcpFlavour::uSignal = cComponent::registerSignal("u");
-simsignal_t OrbtcpFlavour::USignal = cComponent::registerSignal("U");
-simsignal_t OrbtcpFlavour::additiveIncreaseSignal = cComponent::registerSignal("additiveIncrease");
-simsignal_t OrbtcpFlavour::sharingFlowsSignal = cComponent::registerSignal("sharingFlows");
-simsignal_t OrbtcpFlavour::bottleneckBandwidthSignal = cComponent::registerSignal("bottleneckBandwidth");
-simsignal_t OrbtcpFlavour::avgRttSignal = cComponent::registerSignal("avgRtt");
-simsignal_t OrbtcpFlavour::queueingDelaySignal = cComponent::registerSignal("queueingDelay");
-simsignal_t OrbtcpFlavour::estimatedRttSignal = cComponent::registerSignal("estimatedRtt");
-simsignal_t OrbtcpFlavour::avgEstimatedRttSignal = cComponent::registerSignal("avgEstimatedRtt");
-simsignal_t OrbtcpFlavour::alphaSignal = cComponent::registerSignal("alpha");
+simsignal_t OrbtcpAIorMDFlavour::txRateSignal = cComponent::registerSignal("txRate");
+simsignal_t OrbtcpAIorMDFlavour::tauSignal = cComponent::registerSignal("tau");
+simsignal_t OrbtcpAIorMDFlavour::uSignal = cComponent::registerSignal("u");
+simsignal_t OrbtcpAIorMDFlavour::USignal = cComponent::registerSignal("U");
+simsignal_t OrbtcpAIorMDFlavour::additiveIncreaseSignal = cComponent::registerSignal("additiveIncrease");
+simsignal_t OrbtcpAIorMDFlavour::sharingFlowsSignal = cComponent::registerSignal("sharingFlows");
+simsignal_t OrbtcpAIorMDFlavour::bottleneckBandwidthSignal = cComponent::registerSignal("bottleneckBandwidth");
+simsignal_t OrbtcpAIorMDFlavour::avgRttSignal = cComponent::registerSignal("avgRtt");
+simsignal_t OrbtcpAIorMDFlavour::queueingDelaySignal = cComponent::registerSignal("queueingDelay");
+simsignal_t OrbtcpAIorMDFlavour::estimatedRttSignal = cComponent::registerSignal("estimatedRtt");
+simsignal_t OrbtcpAIorMDFlavour::avgEstimatedRttSignal = cComponent::registerSignal("avgEstimatedRtt");
+simsignal_t OrbtcpAIorMDFlavour::alphaSignal = cComponent::registerSignal("alpha");
 
-OrbtcpFlavour::OrbtcpFlavour() : OrbtcpFamily(),
-    state((OrbtcpStateVariables *&)TcpAlgorithm::state)
+OrbtcpAIorMDFlavour::OrbtcpAIorMDFlavour() : OrbtcpFamily(),
+    state((OrbtcpAIorMDStateVariables *&)TcpAlgorithm::state)
 {
 }
 
-void OrbtcpFlavour::initialize()
+void OrbtcpAIorMDFlavour::initialize()
 {
     OrbtcpFamily::initialize();
     state->B = conn->getTcpMain()->par("bandwidth");
@@ -60,7 +60,7 @@ void OrbtcpFlavour::initialize()
     }
 }
 
-void OrbtcpFlavour::established(bool active)
+void OrbtcpAIorMDFlavour::established(bool active)
 {
     //state->snd_cwnd = state->B * state->T.dbl();
     state->snd_cwnd = 7300; //5 packets
@@ -77,7 +77,7 @@ void OrbtcpFlavour::established(bool active)
     }
 }
 
-void OrbtcpFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAcked)
+void OrbtcpAIorMDFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAcked)
 {
     //
     // Jacobson's algorithm for estimating RTT and adaptively setting RTO.
@@ -125,7 +125,7 @@ void OrbtcpFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAcked)
     conn->emit(rtoSignal, rto);
 }
 
-void OrbtcpFlavour::receivedDataAckInt(uint32_t firstSeqAcked, IntDataVec intData)
+void OrbtcpAIorMDFlavour::receivedDataAckInt(uint32_t firstSeqAcked, IntDataVec intData)
 {
     EV_INFO << "\nORBTCPInfo ___________________________________________" << endl;
     EV_INFO << "\nORBTCPInfo - Received Data Ack" << endl;
@@ -212,7 +212,7 @@ void OrbtcpFlavour::receivedDataAckInt(uint32_t firstSeqAcked, IntDataVec intDat
         sendData(false);
 }
 
-double OrbtcpFlavour::measureInflight(IntDataVec intData)
+double OrbtcpAIorMDFlavour::measureInflight(IntDataVec intData)
 {
     double u = 0;
     double tau;
@@ -322,11 +322,11 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     return state->u;
 }
 
-uint32_t OrbtcpFlavour::computeWnd(double u, bool updateWc)
+uint32_t OrbtcpAIorMDFlavour::computeWnd(double u, bool updateWc)
 {
     uint32_t w;
     if(u >= state->eta || state->incStage >= state->maxStage) {
-        w = (state->prevWnd/(u/state->eta))+state->additiveIncrease;
+        w = (state->prevWnd/(u/state->eta));
         if(updateWc) {
             state->incStage = 0;
             state->prevWnd = w;
@@ -342,18 +342,18 @@ uint32_t OrbtcpFlavour::computeWnd(double u, bool updateWc)
     return w;
 }
 
-size_t OrbtcpFlavour::getConnId()
+size_t OrbtcpAIorMDFlavour::getConnId()
 {
     return connId;
 }
 
-simtime_t OrbtcpFlavour::getSrtt()
+simtime_t OrbtcpAIorMDFlavour::getSrtt()
 {
     //return state->srtt;
     return estimatedRtt;
 }
 
-unsigned int OrbtcpFlavour::getCwnd()
+unsigned int OrbtcpAIorMDFlavour::getCwnd()
 {
     return state->snd_cwnd;
 }

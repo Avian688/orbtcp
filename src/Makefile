@@ -37,6 +37,7 @@ OBJS = \
     $O/transportlayer/orbtcp/OrbtcpConnection.o \
     $O/transportlayer/orbtcp/OrbtcpSendQueue.o \
     $O/transportlayer/orbtcp/flavours/HpccFlavour.o \
+    $O/transportlayer/orbtcp/flavours/OrbtcpAIorMDFlavour.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpAvgRttFlavour.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpEstRttAIFlavour.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpFamily.o \
