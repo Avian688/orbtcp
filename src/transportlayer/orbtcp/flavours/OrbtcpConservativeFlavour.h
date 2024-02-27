@@ -13,8 +13,8 @@
 // along with this program.  If not, see http://www.gnu.org/licenses/.
 // 
 
-#ifndef TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPFLAVOUR_H_
-#define TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPFLAVOUR_H_
+#ifndef TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPCONSERVATIVEFLAVOUR_H_
+#define TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPCONSERVATIVEFLAVOUR_H_
 
 #include "../../../common/IntTag_m.h"
 #include "../OrbtcpConnection.h"
@@ -26,15 +26,15 @@ namespace tcp {
 /**
  * State variables for Orbtcp.
  */
-typedef OrbtcpFamilyStateVariables OrbtcpStateVariables;
+typedef OrbtcpFamilyStateVariables OrbtcpConservativeStateVariables;
 
 /**
  * Implements OrbTCP.
  */
-class OrbtcpFlavour : public OrbtcpFamily
+class OrbtcpConservativeFlavour : public OrbtcpFamily
 {
   protected:
-    OrbtcpStateVariables *& state;
+    OrbtcpConservativeStateVariables *& state;
 
     static simsignal_t txRateSignal; // will record load
     static simsignal_t tauSignal; // will record total number of RTOs
@@ -56,14 +56,14 @@ class OrbtcpFlavour : public OrbtcpFamily
     /** Create and return a OrbtcpStateVariables object. */
     virtual TcpStateVariables *createStateVariables() override
     {
-        return new OrbtcpStateVariables();
+        return new OrbtcpConservativeStateVariables();
     }
 
     virtual void initialize() override;
 
   public:
     /** Constructor */
-    OrbtcpFlavour();
+    OrbtcpConservativeFlavour();
 
     virtual void established(bool active) override;
 

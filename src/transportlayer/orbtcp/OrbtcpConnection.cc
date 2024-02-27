@@ -99,7 +99,7 @@ void OrbtcpConnection::configureStateVariables()
     state->sack_support = tcpMain->par("sackSupport"); // if set, this means that current host supports SACK (RFC 2018, 2883, 3517)
 
     if (state->sack_support) {
-        std::string algorithmName1 = "TcpReno";
+        std::string algorithmName1 = "TcpReno"; //TODO MAKE INTO LIST
         std::string algorithmName2 = "OrbtcpFlavour";
         std::string algorithmName2b = "HpccFlavour";
         std::string algorithmName2c = "OrbtcpRttFlavour";
@@ -110,9 +110,12 @@ void OrbtcpConnection::configureStateVariables()
         std::string algorithmName2h = "OrbtcpEstRttAIFlavour";
         std::string algorithmName2i = "OrbtcpHalfMDFlavour";
         std::string algorithmName2j = "OrbtcpAIorMDFlavour";
+        std::string algorithmName2k = "Orbtcp23SplitFlavour";
+        std::string algorithmName2l = "OrbtcpConservativeFlavour";
+
         std::string algorithmName3 = tcpMain->par("tcpAlgorithmClass");
 
-        if (algorithmName1 != algorithmName3 && algorithmName2 != algorithmName3 && algorithmName2b != algorithmName3 && algorithmName2c != algorithmName3 && algorithmName2d != algorithmName3 && algorithmName2e != algorithmName3 && algorithmName2f != algorithmName3 && algorithmName2g != algorithmName3 && algorithmName2h != algorithmName3 && algorithmName2i != algorithmName3 && algorithmName2j != algorithmName3) { // TODO add additional checks for new SACK supporting algorithms here once they are implemented
+        if (algorithmName1 != algorithmName3 && algorithmName2 != algorithmName3 && algorithmName2b != algorithmName3 && algorithmName2c != algorithmName3 && algorithmName2d != algorithmName3 && algorithmName2e != algorithmName3 && algorithmName2f != algorithmName3 && algorithmName2g != algorithmName3 && algorithmName2h != algorithmName3 && algorithmName2i != algorithmName3 && algorithmName2j != algorithmName3 && algorithmName2k != algorithmName3 && algorithmName2l != algorithmName3) { // TODO add additional checks for new SACK supporting algorithms here once they are implemented
             EV_DEBUG << "If you want to use TCP SACK please set tcpAlgorithmClass to TcpReno\n";
             ASSERT(false);
         }

@@ -13,8 +13,8 @@
 // along with this program.  If not, see http://www.gnu.org/licenses/.
 // 
 
-#ifndef TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPFLAVOUR_H_
-#define TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPFLAVOUR_H_
+#ifndef TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCP23SPLITFLAVOUR_H_
+#define TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCP23SPLITFLAVOUR_H_
 
 #include "../../../common/IntTag_m.h"
 #include "../OrbtcpConnection.h"
@@ -24,17 +24,17 @@ namespace inet {
 namespace tcp {
 
 /**
- * State variables for Orbtcp.
+ * State variables for Orbtcp23SplitFlavour.
  */
-typedef OrbtcpFamilyStateVariables OrbtcpStateVariables;
+typedef OrbtcpFamilyStateVariables Orbtcp23SplitStateVariables;
 
 /**
- * Implements OrbTCP.
+ * Implements Orbtcp23SplitFlavour.
  */
-class OrbtcpFlavour : public OrbtcpFamily
+class Orbtcp23SplitFlavour : public OrbtcpFamily
 {
   protected:
-    OrbtcpStateVariables *& state;
+    Orbtcp23SplitStateVariables *& state;
 
     static simsignal_t txRateSignal; // will record load
     static simsignal_t tauSignal; // will record total number of RTOs
@@ -56,14 +56,14 @@ class OrbtcpFlavour : public OrbtcpFamily
     /** Create and return a OrbtcpStateVariables object. */
     virtual TcpStateVariables *createStateVariables() override
     {
-        return new OrbtcpStateVariables();
+        return new Orbtcp23SplitStateVariables();
     }
 
     virtual void initialize() override;
 
   public:
     /** Constructor */
-    OrbtcpFlavour();
+    Orbtcp23SplitFlavour();
 
     virtual void established(bool active) override;
 
