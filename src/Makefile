@@ -38,6 +38,9 @@ OBJS = \
     $O/transportlayer/orbtcp/OrbtcpSendQueue.o \
     $O/transportlayer/orbtcp/flavours/HpccFlavour.o \
     $O/transportlayer/orbtcp/flavours/Orbtcp23SplitFlavour.o \
+    $O/transportlayer/orbtcp/flavours/Orbtcp23SplitIPValFlavour.o \
+    $O/transportlayer/orbtcp/flavours/Orbtcp52Split93UFlavour.o \
+    $O/transportlayer/orbtcp/flavours/Orbtcp52Split93UIPValFlavour.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpAIorMDFlavour.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpAvgRttFlavour.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpConservativeFlavour.o \

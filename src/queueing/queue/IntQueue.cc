@@ -193,7 +193,7 @@ Packet *IntQueue::pullPacket(cGate *gate)
         IntMetaData* intData = tcpHeader->addTagIfAbsent<IntTag>()->getIntDataForUpdate().back();
         intData->setAverageRtt(avgRtt.dbl());
         intData->setNumOfFlows(numbOfFlows);
-
+        intData->setNumOfFlowsInInitialPhase(numOfFlowsInInitialPhase);
         intData->setHopName(getParentModule()->getParentModule()->getFullName());
         intData->setQLen(queue.getByteLength());
         intData->setTs(simTime());

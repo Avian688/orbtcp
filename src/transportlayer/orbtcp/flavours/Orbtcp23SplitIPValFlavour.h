@@ -13,8 +13,8 @@
 // along with this program.  If not, see http://www.gnu.org/licenses/.
 // 
 
-#ifndef TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPNUMFLOWSINITIALPHASEFLAVOUR_H_
-#define TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPNUMFLOWSINITIALPHASEFLAVOUR_H_
+#ifndef TRANSPORTLAYER_ORBTCP_FLAVOURS_Orbtcp23SPLITIPVALFLAVOUR_H_
+#define TRANSPORTLAYER_ORBTCP_FLAVOURS_Orbtcp23SPLITIPVALFLAVOUR_H_
 
 #include "../../../common/IntTag_m.h"
 #include "../OrbtcpConnection.h"
@@ -24,17 +24,17 @@ namespace inet {
 namespace tcp {
 
 /**
- * State variables for Orbtcp.
+ * State variables for Orbtcp23SplitIPValFlavour.
  */
-typedef OrbtcpFamilyStateVariables OrbtcpNumFlowsInitialPhaseStateVariables;
+typedef OrbtcpFamilyStateVariables Orbtcp23SplitIPValStateVariables;
 
 /**
- * Implements OrbTCP.
+ * Implements Orbtcp23SplitIPValFlavour.
  */
-class OrbtcpNumFlowsInitialPhaseFlavour : public OrbtcpFamily
+class Orbtcp23SplitIPValFlavour : public OrbtcpFamily
 {
   protected:
-    OrbtcpNumFlowsInitialPhaseStateVariables *& state;
+    Orbtcp23SplitIPValStateVariables *& state;
 
     static simsignal_t txRateSignal; // will record load
     static simsignal_t tauSignal; // will record total number of RTOs
@@ -42,7 +42,6 @@ class OrbtcpNumFlowsInitialPhaseFlavour : public OrbtcpFamily
     static simsignal_t USignal;
     static simsignal_t additiveIncreaseSignal;
     static simsignal_t sharingFlowsSignal;
-    static simsignal_t initialPhaseSharingFlowsSignal;
     static simsignal_t bottleneckBandwidthSignal;
     static simsignal_t avgRttSignal;
     static simsignal_t queueingDelaySignal;
@@ -57,14 +56,14 @@ class OrbtcpNumFlowsInitialPhaseFlavour : public OrbtcpFamily
     /** Create and return a OrbtcpStateVariables object. */
     virtual TcpStateVariables *createStateVariables() override
     {
-        return new OrbtcpNumFlowsInitialPhaseStateVariables();
+        return new Orbtcp23SplitIPValStateVariables();
     }
 
     virtual void initialize() override;
 
   public:
     /** Constructor */
-    OrbtcpNumFlowsInitialPhaseFlavour();
+    Orbtcp23SplitIPValFlavour();
 
     virtual void established(bool active) override;
 
@@ -79,6 +78,8 @@ class OrbtcpNumFlowsInitialPhaseFlavour : public OrbtcpFamily
     virtual size_t getConnId() override;
 
     virtual simtime_t getSrtt() override;
+    virtual unsigned int getCwnd() override;
+
 
     };
 

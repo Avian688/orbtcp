@@ -28,6 +28,7 @@ simple OrbtcpConnection extends TcpConnection
         @signal[U];
         @signal[additiveIncrease];
         @signal[sharingFlows];
+        @signal[initialPhaseSharingFlows];
         @signal[bottleneckBandwidth];
         @signal[avgRtt];
         @signal[queueingDelay];
@@ -41,6 +42,7 @@ simple OrbtcpConnection extends TcpConnection
         @statistic[U](record=vector; interpolationmode=sample-hold);
         @statistic[additiveIncrease](record=vector; interpolationmode=sample-hold);
 		@statistic[sharingFlows](record=vector; interpolationmode=sample-hold);
+		@statistic[initialPhaseSharingFlows](record=vector; interpolationmode=sample-hold);
 		@statistic[bottleneckBandwidth](record=vector; interpolationmode=sample-hold);
 		@statistic[avgRtt](record=vector; interpolationmode=sample-hold);
 		@statistic[queueingDelay](record=vector; interpolationmode=sample-hold);
