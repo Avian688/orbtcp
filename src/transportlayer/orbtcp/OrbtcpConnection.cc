@@ -53,7 +53,7 @@ TcpConnection *OrbtcpConnection::cloneListeningConnection()
     auto moduleType = cModuleType::get("orbtcp.transportlayer.orbtcp.OrbtcpConnection");
     int newSocketId = getEnvir()->getUniqueNumber();
     char submoduleName[24];
-    sprintf(submoduleName, "conn-%d", newSocketId);
+    std::snprintf(submoduleName, sizeof(submoduleName), "conn-%d", newSocketId);
     auto conn = check_and_cast<OrbtcpConnection *>(moduleType->createScheduleInit(submoduleName, tcpMain));
     conn->TcpConnection::initConnection(tcpMain, newSocketId);
     conn->initClonedConnection(this);
@@ -99,23 +99,27 @@ void OrbtcpConnection::configureStateVariables()
     state->sack_support = tcpMain->par("sackSupport"); // if set, this means that current host supports SACK (RFC 2018, 2883, 3517)
 
     if (state->sack_support) {
-        std::string algorithmName1 = "TcpReno"; //TODO MAKE INTO LIST
-        std::string algorithmName2 = "OrbtcpFlavour";
-        std::string algorithmName2b = "HpccFlavour";
-        std::string algorithmName2c = "OrbtcpRttFlavour";
-        std::string algorithmName2d = "OrbtcpAvgRttFlavour";
-        std::string algorithmName2e = "OrbtcpNoSSFlavour";
-        std::string algorithmName2f = "OrbtcpNoSSAvgRttAIFlavour";
-        std::string algorithmName2g = "OrbtcpTauUFlavour";
-        std::string algorithmName2h = "OrbtcpEstRttAIFlavour";
-        std::string algorithmName2i = "OrbtcpHalfMDFlavour";
-        std::string algorithmName2j = "OrbtcpAIorMDFlavour";
-        std::string algorithmName2k = "Orbtcp23SplitFlavour";
-        std::string algorithmName2l = "OrbtcpConservativeFlavour";
+        std::vector<std::string> algorithmNames = {
+            "TcpReno",
+            "OrbtcpFlavour",
+            "HpccFlavour",
+            "OrbtcpRttFlavour",
+            "OrbtcpAvgRttFlavour",
+            "OrbtcpNoSSFlavour",
+            "OrbtcpNoSSAvgRttAIFlavour",
+            "OrbtcpTauUFlavour",
+            "OrbtcpEstRttAIFlavour",
+            "OrbtcpHalfMDFlavour",
+            "OrbtcpAIorMDFlavour",
+            "Orbtcp23SplitFlavour",
+            "OrbtcpConservativeFlavour",
+            "OrbtcpIPCutOffFlavour",
+            "OrbtcpNumFlowsInitialPhaseFlavour"
+        };
 
         std::string algorithmName3 = tcpMain->par("tcpAlgorithmClass");
 
-        if (algorithmName1 != algorithmName3 && algorithmName2 != algorithmName3 && algorithmName2b != algorithmName3 && algorithmName2c != algorithmName3 && algorithmName2d != algorithmName3 && algorithmName2e != algorithmName3 && algorithmName2f != algorithmName3 && algorithmName2g != algorithmName3 && algorithmName2h != algorithmName3 && algorithmName2i != algorithmName3 && algorithmName2j != algorithmName3 && algorithmName2k != algorithmName3 && algorithmName2l != algorithmName3) { // TODO add additional checks for new SACK supporting algorithms here once they are implemented
+        if (std::find(algorithmNames.begin(), algorithmNames.end(), algorithmName3) == algorithmNames.end()) {
             EV_DEBUG << "If you want to use TCP SACK please set tcpAlgorithmClass to TcpReno\n";
             ASSERT(false);
         }
@@ -1140,6 +1144,7 @@ uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
     tcpHeader->addTagIfAbsent<IntTag>()->setConnId((unsigned long)dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getConnId());
     tcpHeader->addTagIfAbsent<IntTag>()->setRtt(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getSrtt());
     tcpHeader->addTagIfAbsent<IntTag>()->setCwnd(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getCwnd());
+    tcpHeader->addTagIfAbsent<IntTag>()->setInitialPhase(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getInitialPhase());
     // send it
     sendToIP(tcpSegment, tcpHeader);
 

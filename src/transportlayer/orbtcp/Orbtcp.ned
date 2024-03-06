@@ -27,5 +27,5 @@ simple Orbtcp extends Tcp
         int sharingFlows = default(2);
         double additiveIncreasePercent = default(0.05);
         double eta = default(0.95);
-        double alpha = default (0);
+        double alpha = default (0.03);
 }

@@ -25,6 +25,7 @@ class IntMetaData extends cObject
 	double averageRtt;
 	int numOfFlows;
 	long rxQlen; // RX Queue Length
+	int numOfFlowsInInitialPhase;
 }
 
 class IntTag extends TagBase
@@ -33,4 +34,5 @@ class IntTag extends TagBase
     IntDataVec intData;
     simtime_t rtt;
     unsigned int cwnd;
+	bool initialPhase = true;
 }

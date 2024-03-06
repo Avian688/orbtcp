@@ -39,12 +39,12 @@ protected:
 
     virtual void initConnection(TcpOpenCommand *openCmd) override;
     virtual void initClonedConnection(TcpConnection *listenerConn) override;
-    virtual void configureStateVariables();
+    virtual void configureStateVariables() override;
     virtual void process_SEND(TcpEventCode& event, TcpCommand *tcpCommand, cMessage *msg) override;
     virtual TcpConnection *cloneListeningConnection() override;
 public:
     virtual bool processTimer(cMessage *msg) override;
-    virtual uint32_t sendSegment(uint32_t bytes);
+    virtual uint32_t sendSegment(uint32_t bytes) override;
     virtual void sendToIP(Packet *packet, const Ptr<TcpHeader> &tcpseg) override;
     virtual void changeIntersendingTime(simtime_t _intersendingTime);
 private:

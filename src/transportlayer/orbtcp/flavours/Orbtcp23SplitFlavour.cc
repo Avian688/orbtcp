@@ -65,7 +65,7 @@ void Orbtcp23SplitFlavour::established(bool active)
     //state->snd_cwnd = state->B * state->T.dbl();
     state->snd_cwnd = 7300; //5 packets
     dynamic_cast<OrbtcpConnection*>(conn)->changeIntersendingTime(0.000001); //do not pace intial packets as RTT is unknown
-    state->ssthresh = 100000000000;
+    state->ssthresh = 1215752192;
     connId = std::hash<std::string>{}(conn->localAddr.str() + "/" + std::to_string(conn->localPort) + "/" + conn->remoteAddr.str() + "/" + std::to_string(conn->remotePort));
     initPackets = true;
     EV_DETAIL << "OrbTCP initial CWND is set to " << state->snd_cwnd << "\n";
@@ -301,16 +301,16 @@ double Orbtcp23SplitFlavour::measureInflight(IntDataVec intData)
     conn->emit(alphaSignal, state->alpha);
     conn->emit(USignal, state->u);
 
-    state->ssthresh = ((bottleneckBandwidth * rtt.dbl())*0.95)/state->sharingFlows;
-    if(state->ssComplete || state->snd_cwnd > state->ssthresh){ //slow start - more aggressive till max allowed share is reached
+    state->ssthresh = ((bottleneckBandwidth * rtt.dbl())*0.92)/state->sharingFlows;
+    if(!state->initialPhase || state->snd_cwnd > state->ssthresh){ //slow start - more aggressive till max allowed share is reached
         //state->additiveIncrease = ((bottleneckBandwidth * std::min(estimatedRtt.dbl(), bottleneckAverageRtt))*(state->additiveIncreasePercent))/state->sharingFlows;
-        state->additiveIncrease = ((bottleneckBandwidth * rtt.dbl())*(state->additiveIncreasePercent*0.4))/state->sharingFlows;
+        state->additiveIncrease = ((bottleneckBandwidth * rtt.dbl())*(state->additiveIncreasePercent*0.6))/state->sharingFlows;
         state->ssthresh = 0;
-        state->ssComplete = true;
+        state->initialPhase = false;
     }
     else{
         //state->additiveIncrease = ((bottleneckBandwidth * std::min(estimatedRtt.dbl(), bottleneckAverageRtt) )*(state->additiveIncreasePercent));
-        state->additiveIncrease = (bottleneckBandwidth * rtt.dbl())*(state->additiveIncreasePercent*0.6);
+        state->additiveIncrease = (bottleneckBandwidth * rtt.dbl())*(state->additiveIncreasePercent*0.4);
     }
 
 
@@ -325,8 +325,12 @@ double Orbtcp23SplitFlavour::measureInflight(IntDataVec intData)
 uint32_t Orbtcp23SplitFlavour::computeWnd(double u, bool updateWc)
 {
     uint32_t w;
-    if(u >= state->eta || state->incStage >= state->maxStage) {
-        w = (state->prevWnd/(u/state->eta))+state->additiveIncrease;
+    double etaVal = state->eta;
+    if(state->initialPhase){
+        etaVal = 0.92;
+    }
+    if(u >= etaVal || state->incStage >= state->maxStage) {
+        w = (state->prevWnd/(u/etaVal))+state->additiveIncrease;
         if(updateWc) {
             state->incStage = 0;
             state->prevWnd = w;

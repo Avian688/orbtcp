@@ -41,12 +41,13 @@ struct OrbtcpFamilyStateVariables extends TcpTahoeRenoFamilyStateVariables
     
     int subFlows = 1;
     int sharingFlows = 1;
+    int initialPhaseSharingFlows = 1;
     
     double additiveIncreasePercent = 0.05;
     
     int rttCount = 0;
     uint32_t ssthresh = 0;
-    bool ssComplete = false;
+    bool initialPhase = true;
     
     double alpha = 0;
     double useHpccAlpha = false;

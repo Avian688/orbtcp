@@ -29,6 +29,7 @@ Define_Module(IntQueue);
 simsignal_t IntQueue::avgRttSignal = cComponent::registerSignal("avgRttQueue");
 simsignal_t IntQueue::numberOfFlowsSignal = cComponent::registerSignal("numberOfFlows");
 simsignal_t IntQueue::persistentQueueingDelaySignal = cComponent::registerSignal("persistentQueueingDelay");
+simsignal_t IntQueue::numOfFlowsInInitialPhaseSignal = cComponent::registerSignal("numOfFlowsInInitialPhase");
 
 void IntQueue::initialize(int stage)
 {
@@ -83,12 +84,15 @@ void IntQueue::processTimer()
             avgRtt = SimTime(sumRttSquareByCwnd/sumRttByCwnd) - queueingDelay;
         }
         numbOfFlows = flowIds.size();
+        numOfFlowsInInitialPhase = initialPhaseFlowIds.size();
         sumRttSquareByCwnd = 0;
         sumRttByCwnd = 0;
         changePersistentQueueSize = true;
         flowIds.clear();
+        initialPhaseFlowIds.clear();
         cSimpleModule::emit(avgRttSignal, avgRtt);
         cSimpleModule::emit(numberOfFlowsSignal, numbOfFlows);
+        cSimpleModule::emit(numOfFlowsInInitialPhaseSignal, numOfFlowsInInitialPhase);
     }
     scheduleTimer();
 }
@@ -121,8 +125,10 @@ void IntQueue::pushPacket(Packet *packet, cGate *gate)
             sumRttSquareByCwnd += tcpHeader->getTag<IntTag>()->getRtt().dbl() * tcpHeader->getTag<IntTag>()->getRtt().dbl() * packet->getByteLength() / tcpHeader->getTag<IntTag>()->getCwnd();
         }
         flowIds.insert(tcpHeader->getTag<IntTag>()->getConnId());
-        //std::cout << "\n INT QUEUE CWND: " << tcpHeader->getTag<IntTag>()->getCwnd() << endl;
 
+        if(tcpHeader->getTag<IntTag>()->getInitialPhase()){ //if in initial phase and not in current flow list, increment numberOfFlowsInInitialPhase
+            initialPhaseFlowIds.insert(tcpHeader->getTag<IntTag>()->getConnId());;
+        }
     }
 
     if(packet->getDataLength() > b(0)) { //Data Packet

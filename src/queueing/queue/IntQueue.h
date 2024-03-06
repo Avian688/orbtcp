@@ -27,14 +27,17 @@ protected:
     static simsignal_t avgRttSignal;
     static simsignal_t numberOfFlowsSignal;
     static simsignal_t persistentQueueingDelaySignal;
+    static simsignal_t numOfFlowsInInitialPhaseSignal;
 
     long txBytes;
     simtime_t avgRtt;
     int numbOfFlows;
+    int numOfFlowsInInitialPhase;
     simtime_t avgRttTimer;
     cMessage *averageRttTimerMsg = nullptr;
     //std::map<std::string, simtime_t> rtts;
     std::set<long> flowIds;
+    std::set<long> initialPhaseFlowIds;
     double sumRttByCwnd;
     double sumRttSquareByCwnd;
     long persistentQueueSize;

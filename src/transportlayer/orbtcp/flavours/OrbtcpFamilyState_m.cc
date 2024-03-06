@@ -177,10 +177,11 @@ void __doPacking(omnetpp::cCommBuffer *b, const OrbtcpFamilyStateVariables& a)
     doParsimPacking(b,a.R);
     doParsimPacking(b,a.subFlows);
     doParsimPacking(b,a.sharingFlows);
+    doParsimPacking(b,a.initialPhaseSharingFlows);
     doParsimPacking(b,a.additiveIncreasePercent);
     doParsimPacking(b,a.rttCount);
     doParsimPacking(b,a.ssthresh);
-    doParsimPacking(b,a.ssComplete);
+    doParsimPacking(b,a.initialPhase);
     doParsimPacking(b,a.alpha);
     doParsimPacking(b,a.useHpccAlpha);
 }
@@ -205,10 +206,11 @@ void __doUnpacking(omnetpp::cCommBuffer *b, OrbtcpFamilyStateVariables& a)
     doParsimUnpacking(b,a.R);
     doParsimUnpacking(b,a.subFlows);
     doParsimUnpacking(b,a.sharingFlows);
+    doParsimUnpacking(b,a.initialPhaseSharingFlows);
     doParsimUnpacking(b,a.additiveIncreasePercent);
     doParsimUnpacking(b,a.rttCount);
     doParsimUnpacking(b,a.ssthresh);
-    doParsimUnpacking(b,a.ssComplete);
+    doParsimUnpacking(b,a.initialPhase);
     doParsimUnpacking(b,a.alpha);
     doParsimUnpacking(b,a.useHpccAlpha);
 }
@@ -235,10 +237,11 @@ class OrbtcpFamilyStateVariablesDescriptor : public omnetpp::cClassDescriptor
         FIELD_R,
         FIELD_subFlows,
         FIELD_sharingFlows,
+        FIELD_initialPhaseSharingFlows,
         FIELD_additiveIncreasePercent,
         FIELD_rttCount,
         FIELD_ssthresh,
-        FIELD_ssComplete,
+        FIELD_initialPhase,
         FIELD_alpha,
         FIELD_useHpccAlpha,
     };
@@ -308,7 +311,7 @@ const char *OrbtcpFamilyStateVariablesDescriptor::getProperty(const char *proper
 int OrbtcpFamilyStateVariablesDescriptor::getFieldCount() const
 {
     omnetpp::cClassDescriptor *base = getBaseClassDescriptor();
-    return base ? 23+base->getFieldCount() : 23;
+    return base ? 24+base->getFieldCount() : 24;
 }
 
 unsigned int OrbtcpFamilyStateVariablesDescriptor::getFieldTypeFlags(int field) const
@@ -337,14 +340,15 @@ unsigned int OrbtcpFamilyStateVariablesDescriptor::getFieldTypeFlags(int field) 
         0,    // FIELD_R
         0,    // FIELD_subFlows
         0,    // FIELD_sharingFlows
+        0,    // FIELD_initialPhaseSharingFlows
         0,    // FIELD_additiveIncreasePercent
         0,    // FIELD_rttCount
         0,    // FIELD_ssthresh
-        0,    // FIELD_ssComplete
+        0,    // FIELD_initialPhase
         0,    // FIELD_alpha
         0,    // FIELD_useHpccAlpha
     };
-    return (field >= 0 && field < 23) ? fieldTypeFlags[field] : 0;
+    return (field >= 0 && field < 24) ? fieldTypeFlags[field] : 0;
 }
 
 const char *OrbtcpFamilyStateVariablesDescriptor::getFieldName(int field) const
@@ -373,14 +377,15 @@ const char *OrbtcpFamilyStateVariablesDescriptor::getFieldName(int field) const
         "R",
         "subFlows",
         "sharingFlows",
+        "initialPhaseSharingFlows",
         "additiveIncreasePercent",
         "rttCount",
         "ssthresh",
-        "ssComplete",
+        "initialPhase",
         "alpha",
         "useHpccAlpha",
     };
-    return (field >= 0 && field < 23) ? fieldNames[field] : nullptr;
+    return (field >= 0 && field < 24) ? fieldNames[field] : nullptr;
 }
 
 int OrbtcpFamilyStateVariablesDescriptor::findField(const char *fieldName) const
@@ -404,12 +409,13 @@ int OrbtcpFamilyStateVariablesDescriptor::findField(const char *fieldName) const
     if (strcmp(fieldName, "R") == 0) return baseIndex + 14;
     if (strcmp(fieldName, "subFlows") == 0) return baseIndex + 15;
     if (strcmp(fieldName, "sharingFlows") == 0) return baseIndex + 16;
-    if (strcmp(fieldName, "additiveIncreasePercent") == 0) return baseIndex + 17;
-    if (strcmp(fieldName, "rttCount") == 0) return baseIndex + 18;
-    if (strcmp(fieldName, "ssthresh") == 0) return baseIndex + 19;
-    if (strcmp(fieldName, "ssComplete") == 0) return baseIndex + 20;
-    if (strcmp(fieldName, "alpha") == 0) return baseIndex + 21;
-    if (strcmp(fieldName, "useHpccAlpha") == 0) return baseIndex + 22;
+    if (strcmp(fieldName, "initialPhaseSharingFlows") == 0) return baseIndex + 17;
+    if (strcmp(fieldName, "additiveIncreasePercent") == 0) return baseIndex + 18;
+    if (strcmp(fieldName, "rttCount") == 0) return baseIndex + 19;
+    if (strcmp(fieldName, "ssthresh") == 0) return baseIndex + 20;
+    if (strcmp(fieldName, "initialPhase") == 0) return baseIndex + 21;
+    if (strcmp(fieldName, "alpha") == 0) return baseIndex + 22;
+    if (strcmp(fieldName, "useHpccAlpha") == 0) return baseIndex + 23;
     return base ? base->findField(fieldName) : -1;
 }
 
@@ -439,14 +445,15 @@ const char *OrbtcpFamilyStateVariablesDescriptor::getFieldTypeString(int field) 
         "double",    // FIELD_R
         "int",    // FIELD_subFlows
         "int",    // FIELD_sharingFlows
+        "int",    // FIELD_initialPhaseSharingFlows
         "double",    // FIELD_additiveIncreasePercent
         "int",    // FIELD_rttCount
         "uint32_t",    // FIELD_ssthresh
-        "bool",    // FIELD_ssComplete
+        "bool",    // FIELD_initialPhase
         "double",    // FIELD_alpha
         "double",    // FIELD_useHpccAlpha
     };
-    return (field >= 0 && field < 23) ? fieldTypeStrings[field] : nullptr;
+    return (field >= 0 && field < 24) ? fieldTypeStrings[field] : nullptr;
 }
 
 const char **OrbtcpFamilyStateVariablesDescriptor::getFieldPropertyNames(int field) const
@@ -546,10 +553,11 @@ std::string OrbtcpFamilyStateVariablesDescriptor::getFieldValueAsString(omnetpp:
         case FIELD_R: return double2string(pp->R);
         case FIELD_subFlows: return long2string(pp->subFlows);
         case FIELD_sharingFlows: return long2string(pp->sharingFlows);
+        case FIELD_initialPhaseSharingFlows: return long2string(pp->initialPhaseSharingFlows);
         case FIELD_additiveIncreasePercent: return double2string(pp->additiveIncreasePercent);
         case FIELD_rttCount: return long2string(pp->rttCount);
         case FIELD_ssthresh: return ulong2string(pp->ssthresh);
-        case FIELD_ssComplete: return bool2string(pp->ssComplete);
+        case FIELD_initialPhase: return bool2string(pp->initialPhase);
         case FIELD_alpha: return double2string(pp->alpha);
         case FIELD_useHpccAlpha: return double2string(pp->useHpccAlpha);
         default: return "";
@@ -599,10 +607,11 @@ omnetpp::cValue OrbtcpFamilyStateVariablesDescriptor::getFieldValue(omnetpp::any
         case FIELD_R: return pp->R;
         case FIELD_subFlows: return pp->subFlows;
         case FIELD_sharingFlows: return pp->sharingFlows;
+        case FIELD_initialPhaseSharingFlows: return pp->initialPhaseSharingFlows;
         case FIELD_additiveIncreasePercent: return pp->additiveIncreasePercent;
         case FIELD_rttCount: return pp->rttCount;
         case FIELD_ssthresh: return (omnetpp::intval_t)(pp->ssthresh);
-        case FIELD_ssComplete: return pp->ssComplete;
+        case FIELD_initialPhase: return pp->initialPhase;
         case FIELD_alpha: return pp->alpha;
         case FIELD_useHpccAlpha: return pp->useHpccAlpha;
         default: throw omnetpp::cRuntimeError("Cannot return field %d of class 'OrbtcpFamilyStateVariables' as cValue -- field index out of range?", field);

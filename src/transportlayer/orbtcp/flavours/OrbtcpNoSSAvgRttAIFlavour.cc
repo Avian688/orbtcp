@@ -57,7 +57,7 @@ void OrbtcpNoSSAvgRttAIFlavour::established(bool active)
 {
     //state->snd_cwnd = state->B * state->T.dbl();
     state->snd_cwnd = 7300;
-    state->ssthresh = 100000000000;
+    state->ssthresh = 1215752192;
     connId = std::hash<std::string>{}(conn->localAddr.str() + "/" + std::to_string(conn->localPort) + "/" + conn->remoteAddr.str() + "/" + std::to_string(conn->remotePort));
     initPackets = true;
     EV_DETAIL << "OrbTCP initial CWND is set to " << state->snd_cwnd << "\n";

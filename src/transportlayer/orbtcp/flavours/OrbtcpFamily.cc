@@ -97,10 +97,10 @@ void OrbtcpFamily::receivedDuplicateAck() {
             conn->emit(lossRecoverySignal, 1);
 
             state->snd_cwnd = 3000;
-            state->ssComplete = false;
+            state->initialPhase = true;
             state->additiveIncrease = 1;
             state->prevWnd = 10000;
-            state->ssthresh = 100000000000;
+            state->ssthresh = 1215752192;
 
             // Fast Retransmission: retransmit missing segment without waiting
             // for the REXMIT timer to expire
@@ -136,6 +136,11 @@ unsigned int OrbtcpFamily::getCwnd()
 size_t OrbtcpFamily::getConnId()
 {
     return 0;
+}
+
+bool OrbtcpFamily::getInitialPhase()
+{
+    return state->initialPhase;
 }
 
 } // namespace tcp

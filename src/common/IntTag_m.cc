@@ -470,6 +470,7 @@ void IntMetaData::copy(const IntMetaData& other)
     this->averageRtt = other.averageRtt;
     this->numOfFlows = other.numOfFlows;
     this->rxQlen = other.rxQlen;
+    this->numOfFlowsInInitialPhase = other.numOfFlowsInInitialPhase;
 }
 
 void IntMetaData::parsimPack(omnetpp::cCommBuffer *b) const
@@ -482,6 +483,7 @@ void IntMetaData::parsimPack(omnetpp::cCommBuffer *b) const
     doParsimPacking(b,this->averageRtt);
     doParsimPacking(b,this->numOfFlows);
     doParsimPacking(b,this->rxQlen);
+    doParsimPacking(b,this->numOfFlowsInInitialPhase);
 }
 
 void IntMetaData::parsimUnpack(omnetpp::cCommBuffer *b)
@@ -494,6 +496,7 @@ void IntMetaData::parsimUnpack(omnetpp::cCommBuffer *b)
     doParsimUnpacking(b,this->averageRtt);
     doParsimUnpacking(b,this->numOfFlows);
     doParsimUnpacking(b,this->rxQlen);
+    doParsimUnpacking(b,this->numOfFlowsInInitialPhase);
 }
 
 const char * IntMetaData::getHopName() const
@@ -576,6 +579,16 @@ void IntMetaData::setRxQlen(long rxQlen)
     this->rxQlen = rxQlen;
 }
 
+int IntMetaData::getNumOfFlowsInInitialPhase() const
+{
+    return this->numOfFlowsInInitialPhase;
+}
+
+void IntMetaData::setNumOfFlowsInInitialPhase(int numOfFlowsInInitialPhase)
+{
+    this->numOfFlowsInInitialPhase = numOfFlowsInInitialPhase;
+}
+
 class IntMetaDataDescriptor : public omnetpp::cClassDescriptor
 {
   private:
@@ -589,6 +602,7 @@ class IntMetaDataDescriptor : public omnetpp::cClassDescriptor
         FIELD_averageRtt,
         FIELD_numOfFlows,
         FIELD_rxQlen,
+        FIELD_numOfFlowsInInitialPhase,
     };
   public:
     IntMetaDataDescriptor();
@@ -655,7 +669,7 @@ const char *IntMetaDataDescriptor::getProperty(const char *propertyName) const
 int IntMetaDataDescriptor::getFieldCount() const
 {
     omnetpp::cClassDescriptor *base = getBaseClassDescriptor();
-    return base ? 8+base->getFieldCount() : 8;
+    return base ? 9+base->getFieldCount() : 9;
 }
 
 unsigned int IntMetaDataDescriptor::getFieldTypeFlags(int field) const
@@ -675,8 +689,9 @@ unsigned int IntMetaDataDescriptor::getFieldTypeFlags(int field) const
         FD_ISEDITABLE,    // FIELD_averageRtt
         FD_ISEDITABLE,    // FIELD_numOfFlows
         FD_ISEDITABLE,    // FIELD_rxQlen
+        FD_ISEDITABLE,    // FIELD_numOfFlowsInInitialPhase
     };
-    return (field >= 0 && field < 8) ? fieldTypeFlags[field] : 0;
+    return (field >= 0 && field < 9) ? fieldTypeFlags[field] : 0;
 }
 
 const char *IntMetaDataDescriptor::getFieldName(int field) const
@@ -696,8 +711,9 @@ const char *IntMetaDataDescriptor::getFieldName(int field) const
         "averageRtt",
         "numOfFlows",
         "rxQlen",
+        "numOfFlowsInInitialPhase",
     };
-    return (field >= 0 && field < 8) ? fieldNames[field] : nullptr;
+    return (field >= 0 && field < 9) ? fieldNames[field] : nullptr;
 }
 
 int IntMetaDataDescriptor::findField(const char *fieldName) const
@@ -712,6 +728,7 @@ int IntMetaDataDescriptor::findField(const char *fieldName) const
     if (strcmp(fieldName, "averageRtt") == 0) return baseIndex + 5;
     if (strcmp(fieldName, "numOfFlows") == 0) return baseIndex + 6;
     if (strcmp(fieldName, "rxQlen") == 0) return baseIndex + 7;
+    if (strcmp(fieldName, "numOfFlowsInInitialPhase") == 0) return baseIndex + 8;
     return base ? base->findField(fieldName) : -1;
 }
 
@@ -732,8 +749,9 @@ const char *IntMetaDataDescriptor::getFieldTypeString(int field) const
         "double",    // FIELD_averageRtt
         "int",    // FIELD_numOfFlows
         "long",    // FIELD_rxQlen
+        "int",    // FIELD_numOfFlowsInInitialPhase
     };
-    return (field >= 0 && field < 8) ? fieldTypeStrings[field] : nullptr;
+    return (field >= 0 && field < 9) ? fieldTypeStrings[field] : nullptr;
 }
 
 const char **IntMetaDataDescriptor::getFieldPropertyNames(int field) const
@@ -824,6 +842,7 @@ std::string IntMetaDataDescriptor::getFieldValueAsString(omnetpp::any_ptr object
         case FIELD_averageRtt: return double2string(pp->getAverageRtt());
         case FIELD_numOfFlows: return long2string(pp->getNumOfFlows());
         case FIELD_rxQlen: return long2string(pp->getRxQlen());
+        case FIELD_numOfFlowsInInitialPhase: return long2string(pp->getNumOfFlowsInInitialPhase());
         default: return "";
     }
 }
@@ -848,6 +867,7 @@ void IntMetaDataDescriptor::setFieldValueAsString(omnetpp::any_ptr object, int f
         case FIELD_averageRtt: pp->setAverageRtt(string2double(value)); break;
         case FIELD_numOfFlows: pp->setNumOfFlows(string2long(value)); break;
         case FIELD_rxQlen: pp->setRxQlen(string2long(value)); break;
+        case FIELD_numOfFlowsInInitialPhase: pp->setNumOfFlowsInInitialPhase(string2long(value)); break;
         default: throw omnetpp::cRuntimeError("Cannot set field %d of class 'IntMetaData'", field);
     }
 }
@@ -870,6 +890,7 @@ omnetpp::cValue IntMetaDataDescriptor::getFieldValue(omnetpp::any_ptr object, in
         case FIELD_averageRtt: return pp->getAverageRtt();
         case FIELD_numOfFlows: return pp->getNumOfFlows();
         case FIELD_rxQlen: return (omnetpp::intval_t)(pp->getRxQlen());
+        case FIELD_numOfFlowsInInitialPhase: return pp->getNumOfFlowsInInitialPhase();
         default: throw omnetpp::cRuntimeError("Cannot return field %d of class 'IntMetaData' as cValue -- field index out of range?", field);
     }
 }
@@ -894,6 +915,7 @@ void IntMetaDataDescriptor::setFieldValue(omnetpp::any_ptr object, int field, in
         case FIELD_averageRtt: pp->setAverageRtt(value.doubleValue()); break;
         case FIELD_numOfFlows: pp->setNumOfFlows(omnetpp::checked_int_cast<int>(value.intValue())); break;
         case FIELD_rxQlen: pp->setRxQlen(omnetpp::checked_int_cast<long>(value.intValue())); break;
+        case FIELD_numOfFlowsInInitialPhase: pp->setNumOfFlowsInInitialPhase(omnetpp::checked_int_cast<int>(value.intValue())); break;
         default: throw omnetpp::cRuntimeError("Cannot set field %d of class 'IntMetaData'", field);
     }
 }
@@ -970,6 +992,7 @@ void IntTag::copy(const IntTag& other)
     this->intData = other.intData;
     this->rtt = other.rtt;
     this->cwnd = other.cwnd;
+    this->initialPhase = other.initialPhase;
 }
 
 void IntTag::parsimPack(omnetpp::cCommBuffer *b) const
@@ -979,6 +1002,7 @@ void IntTag::parsimPack(omnetpp::cCommBuffer *b) const
     doParsimPacking(b,this->intData);
     doParsimPacking(b,this->rtt);
     doParsimPacking(b,this->cwnd);
+    doParsimPacking(b,this->initialPhase);
 }
 
 void IntTag::parsimUnpack(omnetpp::cCommBuffer *b)
@@ -988,6 +1012,7 @@ void IntTag::parsimUnpack(omnetpp::cCommBuffer *b)
     doParsimUnpacking(b,this->intData);
     doParsimUnpacking(b,this->rtt);
     doParsimUnpacking(b,this->cwnd);
+    doParsimUnpacking(b,this->initialPhase);
 }
 
 long IntTag::getConnId() const
@@ -1030,6 +1055,16 @@ void IntTag::setCwnd(unsigned int cwnd)
     this->cwnd = cwnd;
 }
 
+bool IntTag::getInitialPhase() const
+{
+    return this->initialPhase;
+}
+
+void IntTag::setInitialPhase(bool initialPhase)
+{
+    this->initialPhase = initialPhase;
+}
+
 class IntTagDescriptor : public omnetpp::cClassDescriptor
 {
   private:
@@ -1039,6 +1074,7 @@ class IntTagDescriptor : public omnetpp::cClassDescriptor
         FIELD_intData,
         FIELD_rtt,
         FIELD_cwnd,
+        FIELD_initialPhase,
     };
   public:
     IntTagDescriptor();
@@ -1105,7 +1141,7 @@ const char *IntTagDescriptor::getProperty(const char *propertyName) const
 int IntTagDescriptor::getFieldCount() const
 {
     omnetpp::cClassDescriptor *base = getBaseClassDescriptor();
-    return base ? 4+base->getFieldCount() : 4;
+    return base ? 5+base->getFieldCount() : 5;
 }
 
 unsigned int IntTagDescriptor::getFieldTypeFlags(int field) const
@@ -1121,8 +1157,9 @@ unsigned int IntTagDescriptor::getFieldTypeFlags(int field) const
         FD_ISCOMPOUND,    // FIELD_intData
         FD_ISEDITABLE,    // FIELD_rtt
         FD_ISEDITABLE,    // FIELD_cwnd
+        FD_ISEDITABLE,    // FIELD_initialPhase
     };
-    return (field >= 0 && field < 4) ? fieldTypeFlags[field] : 0;
+    return (field >= 0 && field < 5) ? fieldTypeFlags[field] : 0;
 }
 
 const char *IntTagDescriptor::getFieldName(int field) const
@@ -1138,8 +1175,9 @@ const char *IntTagDescriptor::getFieldName(int field) const
         "intData",
         "rtt",
         "cwnd",
+        "initialPhase",
     };
-    return (field >= 0 && field < 4) ? fieldNames[field] : nullptr;
+    return (field >= 0 && field < 5) ? fieldNames[field] : nullptr;
 }
 
 int IntTagDescriptor::findField(const char *fieldName) const
@@ -1150,6 +1188,7 @@ int IntTagDescriptor::findField(const char *fieldName) const
     if (strcmp(fieldName, "intData") == 0) return baseIndex + 1;
     if (strcmp(fieldName, "rtt") == 0) return baseIndex + 2;
     if (strcmp(fieldName, "cwnd") == 0) return baseIndex + 3;
+    if (strcmp(fieldName, "initialPhase") == 0) return baseIndex + 4;
     return base ? base->findField(fieldName) : -1;
 }
 
@@ -1166,8 +1205,9 @@ const char *IntTagDescriptor::getFieldTypeString(int field) const
         "inet::IntDataVec",    // FIELD_intData
         "omnetpp::simtime_t",    // FIELD_rtt
         "unsigned int",    // FIELD_cwnd
+        "bool",    // FIELD_initialPhase
     };
-    return (field >= 0 && field < 4) ? fieldTypeStrings[field] : nullptr;
+    return (field >= 0 && field < 5) ? fieldTypeStrings[field] : nullptr;
 }
 
 const char **IntTagDescriptor::getFieldPropertyNames(int field) const
@@ -1254,6 +1294,7 @@ std::string IntTagDescriptor::getFieldValueAsString(omnetpp::any_ptr object, int
         case FIELD_intData: return "";
         case FIELD_rtt: return simtime2string(pp->getRtt());
         case FIELD_cwnd: return ulong2string(pp->getCwnd());
+        case FIELD_initialPhase: return bool2string(pp->getInitialPhase());
         default: return "";
     }
 }
@@ -1273,6 +1314,7 @@ void IntTagDescriptor::setFieldValueAsString(omnetpp::any_ptr object, int field,
         case FIELD_connId: pp->setConnId(string2long(value)); break;
         case FIELD_rtt: pp->setRtt(string2simtime(value)); break;
         case FIELD_cwnd: pp->setCwnd(string2ulong(value)); break;
+        case FIELD_initialPhase: pp->setInitialPhase(string2bool(value)); break;
         default: throw omnetpp::cRuntimeError("Cannot set field %d of class 'IntTag'", field);
     }
 }
@@ -1291,6 +1333,7 @@ omnetpp::cValue IntTagDescriptor::getFieldValue(omnetpp::any_ptr object, int fie
         case FIELD_intData: return omnetpp::toAnyPtr(&pp->getIntData()); break;
         case FIELD_rtt: return pp->getRtt().dbl();
         case FIELD_cwnd: return (omnetpp::intval_t)(pp->getCwnd());
+        case FIELD_initialPhase: return pp->getInitialPhase();
         default: throw omnetpp::cRuntimeError("Cannot return field %d of class 'IntTag' as cValue -- field index out of range?", field);
     }
 }
@@ -1310,6 +1353,7 @@ void IntTagDescriptor::setFieldValue(omnetpp::any_ptr object, int field, int i, 
         case FIELD_connId: pp->setConnId(omnetpp::checked_int_cast<long>(value.intValue())); break;
         case FIELD_rtt: pp->setRtt(value.doubleValue()); break;
         case FIELD_cwnd: pp->setCwnd(omnetpp::checked_int_cast<unsigned int>(value.intValue())); break;
+        case FIELD_initialPhase: pp->setInitialPhase(value.boolValue()); break;
         default: throw omnetpp::cRuntimeError("Cannot set field %d of class 'IntTag'", field);
     }
 }

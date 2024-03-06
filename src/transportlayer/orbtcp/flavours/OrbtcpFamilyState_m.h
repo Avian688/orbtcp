@@ -48,7 +48,7 @@ struct OrbtcpFamilyStateVariables : ::inet::tcp::TcpTahoeRenoFamilyStateVariable
     double txRate = 0;
     double normalisedInflight = 0;
     double normalisedInflightPrev = 0;
-    double u = 0;
+    double u = 1;
     double eta = 0.95;
     double queueingDelay = 0;
     uint32_t targetUtil = 0;
@@ -60,10 +60,11 @@ struct OrbtcpFamilyStateVariables : ::inet::tcp::TcpTahoeRenoFamilyStateVariable
     double R = 0;
     int subFlows = 1;
     int sharingFlows = 1;
+    int initialPhaseSharingFlows = 1;
     double additiveIncreasePercent = 0.05;
     int rttCount = 0;
     uint32_t ssthresh = 0;
-    bool ssComplete = false;
+    bool initialPhase = true;
     double alpha = 0;
     double useHpccAlpha = false;
 

@@ -28,6 +28,9 @@ simple IntQueue extends PacketQueue
         @signal[numberOfFlows];
         @statistic[numberOfFlows](record=vector; interpolationmode=sample-hold);
         
+        @signal[numOfFlowsInInitialPhase];
+        @statistic[numOfFlowsInInitialPhase](record=vector; interpolationmode=sample-hold);
+        
         @signal[persistentQueueingDelay];
         @statistic[persistentQueueingDelay](record=vector; interpolationmode=sample-hold);
         

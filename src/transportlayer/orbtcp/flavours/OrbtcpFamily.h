@@ -47,6 +47,8 @@ class OrbtcpFamily : public TcpTahoeRenoFamily
 
     virtual size_t getConnId();
 
+    virtual bool getInitialPhase();
+
 
 };
 

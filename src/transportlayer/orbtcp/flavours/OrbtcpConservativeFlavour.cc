@@ -67,7 +67,7 @@ void OrbtcpConservativeFlavour::established(bool active)
     //state->snd_cwnd = state->B * state->T.dbl();
     state->snd_cwnd = 7300; //5 packets
     dynamic_cast<OrbtcpConnection*>(conn)->changeIntersendingTime(0.000001); //do not pace intial packets as RTT is unknown
-    state->ssthresh = 100000000000;
+    state->ssthresh = 1215752192;
     connId = std::hash<std::string>{}(conn->localAddr.str() + "/" + std::to_string(conn->localPort) + "/" + conn->remoteAddr.str() + "/" + std::to_string(conn->remotePort));
     initPackets = true;
     EV_DETAIL << "OrbTCP initial CWND is set to " << state->snd_cwnd << "\n";
@@ -304,11 +304,11 @@ double OrbtcpConservativeFlavour::measureInflight(IntDataVec intData)
     conn->emit(USignal, state->u);
 
     state->ssthresh = ((bottleneckBandwidth * rtt.dbl())*0.95)/state->sharingFlows;
-    if(state->ssComplete || state->snd_cwnd > state->ssthresh){ //slow start - more aggressive till max allowed share is reached
+    if(!state->initialPhase || state->snd_cwnd > state->ssthresh){ //slow start - more aggressive till max allowed share is reached
         //state->additiveIncrease = ((bottleneckBandwidth * std::min(estimatedRtt.dbl(), bottleneckAverageRtt))*(state->additiveIncreasePercent))/state->sharingFlows;
         state->additiveIncrease = ((bottleneckBandwidth * rtt.dbl())*(state->additiveIncreasePercent))/state->sharingFlows;
         state->ssthresh = 0;
-        state->ssComplete = true;
+        state->initialPhase = false;
     }
     else{
         //state->additiveIncrease = ((bottleneckBandwidth * std::min(estimatedRtt.dbl(), bottleneckAverageRtt) )*(state->additiveIncreasePercent));

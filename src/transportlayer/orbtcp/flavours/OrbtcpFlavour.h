@@ -78,8 +78,6 @@ class OrbtcpFlavour : public OrbtcpFamily
     virtual size_t getConnId() override;
 
     virtual simtime_t getSrtt() override;
-    virtual unsigned int getCwnd() override;
-
 
     };
 

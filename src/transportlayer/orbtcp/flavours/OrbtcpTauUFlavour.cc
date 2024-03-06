@@ -57,7 +57,7 @@ void OrbtcpTauUFlavour::established(bool active)
 {
     //state->snd_cwnd = state->B * state->T.dbl();
     state->snd_cwnd = 7300; //5 packets
-    state->ssthresh = 100000000000;
+    state->ssthresh = 1215752192;
     connId = std::hash<std::string>{}(conn->localAddr.str() + "/" + std::to_string(conn->localPort) + "/" + conn->remoteAddr.str() + "/" + std::to_string(conn->remotePort));
     initPackets = true;
     EV_DETAIL << "OrbTCP initial CWND is set to " << state->snd_cwnd << "\n";
@@ -284,11 +284,11 @@ double OrbtcpTauUFlavour::measureInflight(IntDataVec intData)
     conn->emit(USignal, state->u);
 
     state->ssthresh = ((bottleneckBandwidth * estimatedRtt.dbl())*state->eta)/state->sharingFlows;
-    state->ssComplete = true;
-    if(state->ssComplete || state->snd_cwnd > state->ssthresh){ //slow start - more aggressive till max allowed share is reached
+    state->initialPhase = false;
+    if(!state->initialPhase || state->snd_cwnd > state->ssthresh){ //slow start - more aggressive till max allowed share is reached
         state->additiveIncrease = ((bottleneckBandwidth * estimatedRtt.dbl() )*(state->additiveIncreasePercent))/state->sharingFlows;
         state->ssthresh = 0;
-        state->ssComplete = true;
+        state->initialPhase = false;
     }
     else{
         state->additiveIncrease = ((bottleneckBandwidth * estimatedRtt.dbl() )*(state->additiveIncreasePercent));

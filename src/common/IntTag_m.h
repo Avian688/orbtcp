@@ -50,6 +50,7 @@ typedef std::vector<IntMetaData*> IntDataVec;
  *     double averageRtt;
  *     int numOfFlows;
  *     long rxQlen; // RX Queue Length
+ *     int numOfFlowsInInitialPhase;
  * }
  * </pre>
  */
@@ -64,6 +65,7 @@ class IntMetaData : public ::omnetpp::cObject
     double averageRtt = 0;
     int numOfFlows = 0;
     long rxQlen = 0;
+    int numOfFlowsInInitialPhase = 0;
 
   private:
     void copy(const IntMetaData& other);
@@ -103,13 +105,16 @@ class IntMetaData : public ::omnetpp::cObject
 
     virtual long getRxQlen() const;
     virtual void setRxQlen(long rxQlen);
+
+    virtual int getNumOfFlowsInInitialPhase() const;
+    virtual void setNumOfFlowsInInitialPhase(int numOfFlowsInInitialPhase);
 };
 
 inline void doParsimPacking(omnetpp::cCommBuffer *b, const IntMetaData& obj) {obj.parsimPack(b);}
 inline void doParsimUnpacking(omnetpp::cCommBuffer *b, IntMetaData& obj) {obj.parsimUnpack(b);}
 
 /**
- * Class generated from <tt>common/IntTag.msg:31</tt> by opp_msgtool.
+ * Class generated from <tt>common/IntTag.msg:32</tt> by opp_msgtool.
  * <pre>
  * class IntTag extends TagBase
  * {
@@ -117,6 +122,7 @@ inline void doParsimUnpacking(omnetpp::cCommBuffer *b, IntMetaData& obj) {obj.pa
  *     IntDataVec intData;
  *     simtime_t rtt;
  *     unsigned int cwnd;
+ *     bool initialPhase = true;
  * }
  * </pre>
  */
@@ -127,6 +133,7 @@ class IntTag : public ::inet::TagBase
     IntDataVec intData;
     ::omnetpp::simtime_t rtt = SIMTIME_ZERO;
     unsigned int cwnd = 0;
+    bool initialPhase = true;
 
   private:
     void copy(const IntTag& other);
@@ -155,6 +162,9 @@ class IntTag : public ::inet::TagBase
 
     virtual unsigned int getCwnd() const;
     virtual void setCwnd(unsigned int cwnd);
+
+    virtual bool getInitialPhase() const;
+    virtual void setInitialPhase(bool initialPhase);
 };
 
 inline void doParsimPacking(omnetpp::cCommBuffer *b, const IntTag& obj) {obj.parsimPack(b);}

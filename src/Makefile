@@ -45,8 +45,10 @@ OBJS = \
     $O/transportlayer/orbtcp/flavours/OrbtcpFamily.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpFlavour.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpHalfMDFlavour.o \
+    $O/transportlayer/orbtcp/flavours/OrbtcpIPCutOffFlavour.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpNoSSAvgRttAIFlavour.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpNoSSFlavour.o \
+    $O/transportlayer/orbtcp/flavours/OrbtcpNumFlowsInitialPhaseFlavour.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpRttFlavour.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpTauUFlavour.o \
     $O/common/IntTag_m.o \
