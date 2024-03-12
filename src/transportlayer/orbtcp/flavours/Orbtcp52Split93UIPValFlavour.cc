@@ -244,6 +244,7 @@ double Orbtcp52Split93UIPValFlavour::measureInflight(IntDataVec intData)
                     u = uPrime;
                     tau = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
                     state->sharingFlows = intDataEntry->getNumOfFlows();
+                    state->initialPhaseSharingFlows = intDataEntry->getNumOfFlowsInInitialPhase();
                     bottleneckAverageRtt = intDataEntry->getAverageRtt();
                     bottleneckTxRate = state->txRate;
                     if(bottleneckAverageRtt <= 0){
@@ -312,7 +313,12 @@ double Orbtcp52Split93UIPValFlavour::measureInflight(IntDataVec intData)
     }
     else{
         //state->additiveIncrease = ((bottleneckBandwidth * std::min(estimatedRtt.dbl(), bottleneckAverageRtt) )*(state->additiveIncreasePercent));
-        state->additiveIncrease = (bottleneckBandwidth * rtt.dbl())*(state->additiveIncreasePercent*0.4)/state->initialPhaseSharingFlows;
+        if(state->initialPhaseSharingFlows > 0){
+            state->additiveIncrease = ((bottleneckBandwidth * rtt.dbl()) * state->additiveIncreasePercent*0.4)/state->initialPhaseSharingFlows;
+        }
+        else{
+            state->additiveIncrease = (bottleneckBandwidth * rtt.dbl()) * state->additiveIncreasePercent*0.4;
+        }
     }
 
 

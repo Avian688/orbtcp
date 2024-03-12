@@ -242,6 +242,7 @@ double Orbtcp23SplitIPValFlavour::measureInflight(IntDataVec intData)
                     u = uPrime;
                     tau = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
                     state->sharingFlows = intDataEntry->getNumOfFlows();
+                    state->initialPhaseSharingFlows = intDataEntry->getNumOfFlowsInInitialPhase();
                     bottleneckAverageRtt = intDataEntry->getAverageRtt();
                     bottleneckTxRate = state->txRate;
                     if(bottleneckAverageRtt <= 0){

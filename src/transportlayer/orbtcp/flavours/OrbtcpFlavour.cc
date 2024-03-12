@@ -305,7 +305,12 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
         state->initialPhase = false;
     }
     else{
-        state->additiveIncrease = (bottleneckBandwidth * rtt.dbl()) * state->additiveIncreasePercent;
+        if(state->initialPhaseSharingFlows > 1){
+            state->additiveIncrease = ((bottleneckBandwidth * rtt.dbl()) * state->additiveIncreasePercent)/state->initialPhaseSharingFlows;
+        }
+        else{
+            state->additiveIncrease = (bottleneckBandwidth * rtt.dbl()) * state->additiveIncreasePercent;
+        }
     }
 
     conn->emit(bottleneckBandwidthSignal, bottleneckBandwidth);
