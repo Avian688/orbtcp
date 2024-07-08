@@ -65,7 +65,7 @@ class HpccFlavour : public OrbtcpFamily
 
     virtual void rttMeasurementComplete(simtime_t tSent, simtime_t tAcked) override;
 
-    virtual void receivedDataAckInt(uint32_t firstSeqAcked, IntDataVec intData) override;
+    virtual void receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData) override;
 
     virtual uint32_t computeWnd(double u, bool updateWc);
 
@@ -73,7 +73,7 @@ class HpccFlavour : public OrbtcpFamily
 
     virtual size_t getConnId() override;
 
-    virtual simtime_t getSrtt() override;
+    virtual simtime_t getRtt() override;
     virtual unsigned int getCwnd() override;
 
 

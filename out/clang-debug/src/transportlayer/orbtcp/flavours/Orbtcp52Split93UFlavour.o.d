@@ -1,10 +1,10 @@
-../out/clang-release/src/transportlayer/orbtcp/flavours/Orbtcp52Split93UIPValFlavour.o: \
-  transportlayer/orbtcp/flavours/Orbtcp52Split93UIPValFlavour.cc \
+../out/clang-debug/src/transportlayer/orbtcp/flavours/Orbtcp52Split93UFlavour.o: \
+  transportlayer/orbtcp/flavours/Orbtcp52Split93UFlavour.cc \
   ../../inet4.4/src/inet/transportlayer/tcp/Tcp.h \
   ../../inet4.4/src/inet/common/lifecycle/ModuleOperations.h \
   ../../inet4.4/src/inet/common/lifecycle/LifecycleOperation.h \
   ../../inet4.4/src/inet/common/INETDefs.h \
-  ../../inet4.4/src/inet/common/precompiled_release.h \
+  ../../inet4.4/src/inet/common/precompiled_debug.h \
   ../../inet4.4/src/inet/common/precompiled.h \
   /Users/av288/omnetpp-6.0/include/omnetpp.h \
   ../../inet4.4/src/inet/opp_defines.h ../../inet4.4/src/inet/features.h \
@@ -78,7 +78,7 @@
   ../../inet4.4/src/inet/transportlayer/tcp_common/TcpHeader.h \
   ../../inet4.4/src/inet/transportlayer/tcp_common/TcpHeader_m.h \
   ../../inet4.4/src/inet/transportlayer/contract/TransportHeaderBase_m.h \
-  transportlayer/orbtcp/flavours/Orbtcp52Split93UIPValFlavour.h \
+  transportlayer/orbtcp/flavours/Orbtcp52Split93UFlavour.h \
   transportlayer/orbtcp/flavours/../../../common/IntTag_m.h \
   transportlayer/orbtcp/flavours/../OrbtcpConnection.h \
   ../../inet4.4/src/inet/common/INETUtils.h \
@@ -108,7 +108,7 @@
 
 ../../inet4.4/src/inet/common/INETDefs.h:
 
-../../inet4.4/src/inet/common/precompiled_release.h:
+../../inet4.4/src/inet/common/precompiled_debug.h:
 
 ../../inet4.4/src/inet/common/precompiled.h:
 
@@ -258,7 +258,7 @@
 
 ../../inet4.4/src/inet/transportlayer/contract/TransportHeaderBase_m.h:
 
-transportlayer/orbtcp/flavours/Orbtcp52Split93UIPValFlavour.h:
+transportlayer/orbtcp/flavours/Orbtcp52Split93UFlavour.h:
 
 transportlayer/orbtcp/flavours/../../../common/IntTag_m.h:
 

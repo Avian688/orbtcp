@@ -126,7 +126,7 @@ void OrbtcpHalfMDFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAck
     conn->emit(rtoSignal, rto);
 }
 
-void OrbtcpHalfMDFlavour::receivedDataAckInt(uint32_t firstSeqAcked, IntDataVec intData)
+void OrbtcpHalfMDFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
     EV_INFO << "\nORBTCPInfo ___________________________________________" << endl;
     EV_INFO << "\nORBTCPInfo - Received Data Ack" << endl;
@@ -343,7 +343,7 @@ size_t OrbtcpHalfMDFlavour::getConnId()
     return connId;
 }
 
-simtime_t OrbtcpHalfMDFlavour::getSrtt()
+simtime_t OrbtcpHalfMDFlavour::getRtt()
 {
     //return state->srtt;
     return estimatedRtt;

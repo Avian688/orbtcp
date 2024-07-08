@@ -34,6 +34,7 @@ struct OrbtcpFamilyStateVariables extends TcpTahoeRenoFamilyStateVariables
     int maxStage = 500;
     uint32_t prevWnd;
     uint32_t additiveIncrease;
+    uint32_t additiveIncreaseGainPerAck;
     
     uint32_t lastUpdateSeq;
     
@@ -52,6 +53,7 @@ struct OrbtcpFamilyStateVariables extends TcpTahoeRenoFamilyStateVariables
     double alpha = 0;
     double useHpccAlpha = false;
     
+    uint32_t bottBW = 0;
 };
 
 cplusplus(OrbtcpFamilyStateVariables) {{

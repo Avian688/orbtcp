@@ -13,8 +13,10 @@
 // along with this program.  If not, see http://www.gnu.org/licenses/.
 // 
 
-#ifndef TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPAVGRTTFLAVOUR_H_
-#define TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPAVGRTTFLAVOUR_H_
+// Normal Orbtcpp but it does not go into the initial phase after loss occurs (maintains cwnd after loss)
+
+#ifndef TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPNOREACTLOSSFLAVOUR_H_
+#define TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPNOREACTLOSSFLAVOUR_H_
 
 #include "../../../common/IntTag_m.h"
 #include "../OrbtcpConnection.h"
@@ -24,17 +26,17 @@ namespace inet {
 namespace tcp {
 
 /**
- * State variables for OrbtcpAvgRttFlavour.
+ * State variables for Orbtcp.
  */
-typedef OrbtcpFamilyStateVariables OrbtcpAvgRttStateVariables;
+typedef OrbtcpFamilyStateVariables OrbtcpNoReactLossStateVariables;
 
 /**
  * Implements OrbTCP.
  */
-class OrbtcpAvgRttFlavour : public OrbtcpFamily
+class OrbtcpNoReactLossFlavour : public OrbtcpFamily
 {
   protected:
-    OrbtcpAvgRttStateVariables *& state;
+    OrbtcpNoReactLossStateVariables *& state;
 
     static simsignal_t txRateSignal; // will record load
     static simsignal_t tauSignal; // will record total number of RTOs
@@ -46,21 +48,24 @@ class OrbtcpAvgRttFlavour : public OrbtcpFamily
     static simsignal_t avgRttSignal;
     static simsignal_t queueingDelaySignal;
     static simsignal_t estimatedRttSignal;
+    static simsignal_t avgEstimatedRttSignal;
+    static simsignal_t alphaSignal;
 
     size_t connId;
     simtime_t rtt;
+    simtime_t estimatedRtt;
     bool initPackets;
-    /** Create and return a OrbtcpAvgRttStateVariables object. */
+    /** Create and return a OrbtcpStateVariables object. */
     virtual TcpStateVariables *createStateVariables() override
     {
-        return new OrbtcpAvgRttStateVariables();
+        return new OrbtcpNoReactLossStateVariables();
     }
 
     virtual void initialize() override;
 
   public:
     /** Constructor */
-    OrbtcpAvgRttFlavour();
+    OrbtcpNoReactLossFlavour();
 
     virtual void established(bool active) override;
 
@@ -75,8 +80,6 @@ class OrbtcpAvgRttFlavour : public OrbtcpFamily
     virtual size_t getConnId() override;
 
     virtual simtime_t getRtt() override;
-    virtual unsigned int getCwnd() override;
-
 
     };
 

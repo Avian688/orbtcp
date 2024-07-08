@@ -21,6 +21,9 @@
 #include "../../common/IntTag_m.h"
 #include "IntQueue.h"
 
+#include "inet/common/ProtocolTag_m.h"
+#include "inet/networklayer/ipv4/IcmpHeader.h"
+
 namespace inet {
 namespace queueing {
 
@@ -34,6 +37,7 @@ simsignal_t IntQueue::numOfFlowsInInitialPhaseSignal = cComponent::registerSigna
 void IntQueue::initialize(int stage)
 {
     PacketQueue::initialize(stage);
+    isActive = true;
     txBytes = 0;
     sumRttByCwnd = 0;
     sumRttSquareByCwnd = 0;
@@ -69,32 +73,39 @@ void IntQueue::handleMessage(cMessage *message)
 
 void IntQueue::processTimer()
 {
-    if(sumRttSquareByCwnd > 0 && sumRttByCwnd > 0){
-        double queueingDelay = 0;
-        if(persistentQueueSize != 2147483647){
-            queueingDelay = (persistentQueueSize / dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate()/8);
-            //cSimpleModule::emit(persistentQueueingDelaySignal, (persistentQueueSize / dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate()/8));
+    if(isActive){
+        if(sumRttSquareByCwnd > 0 && sumRttByCwnd > 0){
+            if(!dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()){
+                EV_DEBUG << "\n Channel has been deactivated!" << endl;
+                isActive = false;
+                return;
+            }
+            double queueingDelay = 0;
+            if(persistentQueueSize != 2147483647){
+                queueingDelay = (persistentQueueSize / dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate()/8);
+                //cSimpleModule::emit(persistentQueueingDelaySignal, (persistentQueueSize / dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate()/8));
+            }
+            queueingDelay = (queue.getByteLength() / dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate()/8);
+            cSimpleModule::emit(persistentQueueingDelaySignal, queueingDelay);
+            if(fixedAvgRTTVal > 0){
+                avgRtt = fixedAvgRTTVal;
+            }
+            else{
+                avgRtt = SimTime(sumRttSquareByCwnd/sumRttByCwnd) - queueingDelay;
+            }
+            numbOfFlows = flowIds.size();
+            numOfFlowsInInitialPhase = initialPhaseFlowIds.size();
+            sumRttSquareByCwnd = 0;
+            sumRttByCwnd = 0;
+            changePersistentQueueSize = true;
+            flowIds.clear();
+            initialPhaseFlowIds.clear();
+            cSimpleModule::emit(avgRttSignal, avgRtt);
+            cSimpleModule::emit(numberOfFlowsSignal, numbOfFlows);
+            cSimpleModule::emit(numOfFlowsInInitialPhaseSignal, numOfFlowsInInitialPhase);
         }
-        queueingDelay = (queue.getByteLength() / dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate()/8);
-        cSimpleModule::emit(persistentQueueingDelaySignal, queueingDelay);
-        if(fixedAvgRTTVal > 0){
-            avgRtt = fixedAvgRTTVal;
-        }
-        else{
-            avgRtt = SimTime(sumRttSquareByCwnd/sumRttByCwnd) - queueingDelay;
-        }
-        numbOfFlows = flowIds.size();
-        numOfFlowsInInitialPhase = initialPhaseFlowIds.size();
-        sumRttSquareByCwnd = 0;
-        sumRttByCwnd = 0;
-        changePersistentQueueSize = true;
-        flowIds.clear();
-        initialPhaseFlowIds.clear();
-        cSimpleModule::emit(avgRttSignal, avgRtt);
-        cSimpleModule::emit(numberOfFlowsSignal, numbOfFlows);
-        cSimpleModule::emit(numOfFlowsInInitialPhaseSignal, numOfFlowsInInitialPhase);
+        scheduleTimer();
     }
-    scheduleTimer();
 }
 
 void IntQueue::scheduleTimer()
@@ -117,33 +128,43 @@ void IntQueue::pushPacket(Packet *packet, cGate *gate)
 
     auto ipv4Header = packet->removeAtFront<Ipv4Header>();
     if (ipv4Header->getTotalLengthField() < packet->getDataLength())
-    packet->setBackOffset(B(ipv4Header->getTotalLengthField()) - ipv4Header->getChunkLength());
-    auto tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
-    if(tcpHeader->findTag<IntTag>()){
-        if(tcpHeader->getTag<IntTag>()->getRtt().dbl() > 0 && tcpHeader->getTag<IntTag>()->getCwnd() > 0){
-            sumRttByCwnd += tcpHeader->getTag<IntTag>()->getRtt().dbl() * packet->getByteLength() / tcpHeader->getTag<IntTag>()->getCwnd();
-            sumRttSquareByCwnd += tcpHeader->getTag<IntTag>()->getRtt().dbl() * tcpHeader->getTag<IntTag>()->getRtt().dbl() * packet->getByteLength() / tcpHeader->getTag<IntTag>()->getCwnd();
-        }
-        flowIds.insert(tcpHeader->getTag<IntTag>()->getConnId());
+        packet->setBackOffset(B(ipv4Header->getTotalLengthField()) - ipv4Header->getChunkLength());
 
-        if(tcpHeader->getTag<IntTag>()->getInitialPhase()){ //if in initial phase and not in current flow list, increment numberOfFlowsInInitialPhase
-            initialPhaseFlowIds.insert(tcpHeader->getTag<IntTag>()->getConnId());;
-        }
-    }
+    if(ipv4Header->getProtocolId() == 6){
+        auto tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
+        if(tcpHeader->findTag<IntTag>()){
+            if(tcpHeader->getTag<IntTag>()->getRtt().dbl() > 0 && tcpHeader->getTag<IntTag>()->getCwnd() > 0){
+                sumRttByCwnd += tcpHeader->getTag<IntTag>()->getRtt().dbl() * packet->getByteLength() / tcpHeader->getTag<IntTag>()->getCwnd();
+                sumRttSquareByCwnd += tcpHeader->getTag<IntTag>()->getRtt().dbl() * tcpHeader->getTag<IntTag>()->getRtt().dbl() * packet->getByteLength() / tcpHeader->getTag<IntTag>()->getCwnd();
+            }
+            flowIds.insert(tcpHeader->getTag<IntTag>()->getConnId());
 
-    if(packet->getDataLength() > b(0)) { //Data Packet
+            if(tcpHeader->getTag<IntTag>()->getInitialPhase()){ //if in initial phase and not in current flow list, increment numberOfFlowsInInitialPhase
+                initialPhaseFlowIds.insert(tcpHeader->getTag<IntTag>()->getConnId());;
+            }
+        }
+
+        if(packet->getDataLength() > b(0)) { //Data Packet
             tcpHeader->addTagIfAbsent<IntTag>();
             IntMetaData* intData = new IntMetaData();
             intData->setRxQlen(queue.getByteLength());
             tcpHeader->addTagIfAbsent<IntTag>()->getIntDataForUpdate().push_back(intData);
+        }
+
+        if(queue.getByteLength() < persistentQueueSize || changePersistentQueueSize){
+            persistentQueueSize = queue.getByteLength();
+            changePersistentQueueSize = false;
+        }
+
+        //std::cout << "\n PROTOCOL: " << packet->getTag<PacketProtocolTag>()->getProtocol()->str() << endl;
+
+        packet->insertAtFront(tcpHeader);
+    }
+    else{
+        //ICMP packet transmitted - deactivate router
+        isActive = false;
     }
 
-    if(queue.getByteLength() < persistentQueueSize || changePersistentQueueSize){
-        persistentQueueSize = queue.getByteLength();
-        changePersistentQueueSize = false;
-    }
-
-    packet->insertAtFront(tcpHeader);
     ipv4Header->setTotalLengthField(ipv4Header->getChunkLength() + packet->getDataLength());
     packet->insertAtFront(ipv4Header);
 
@@ -187,24 +208,30 @@ Packet *IntQueue::pullPacket(cGate *gate)
     auto ipv4Header = packet->removeAtFront<Ipv4Header>();
     if (ipv4Header->getTotalLengthField() < packet->getDataLength())
         packet->setBackOffset(B(ipv4Header->getTotalLengthField()) - ipv4Header->getChunkLength());
-    auto tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
-    txBytes += packet->getByteLength();
-    if(packet->getDataLength() > b(0)) { //Data Packet
-        IntMetaData* intData = tcpHeader->addTagIfAbsent<IntTag>()->getIntDataForUpdate().back();
-        intData->setAverageRtt(avgRtt.dbl());
-        intData->setNumOfFlows(numbOfFlows);
-        intData->setNumOfFlowsInInitialPhase(numOfFlowsInInitialPhase);
-        intData->setHopName(getParentModule()->getParentModule()->getFullName());
-        intData->setQLen(queue.getByteLength());
-        intData->setTs(simTime());
-        intData->setTxBytes(txBytes);
-        intData->setB(dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate()/8);
-        //tcpHeader->addTagIfAbsent<IntTag>()->getIntDataForUpdate().push_back(intData);
+
+    if(ipv4Header->getProtocolId() == 6){
+        auto tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
+        txBytes += packet->getByteLength();
+        if(packet->getDataLength() > b(0)) { //Data Packet
+            IntMetaData* intData = tcpHeader->addTagIfAbsent<IntTag>()->getIntDataForUpdate().back();
+            intData->setAverageRtt(avgRtt.dbl());
+            intData->setNumOfFlows(numbOfFlows);
+            intData->setNumOfFlowsInInitialPhase(numOfFlowsInInitialPhase);
+            intData->setHopName(getParentModule()->getParentModule()->getFullName());
+            intData->setQLen(queue.getByteLength());
+            intData->setTs(simTime());
+            intData->setTxBytes(txBytes);
+            intData->setB(dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate()/8);
+            //tcpHeader->addTagIfAbsent<IntTag>()->getIntDataForUpdate().push_back(intData);
+        }
+        packet->insertAtFront(tcpHeader);
     }
-    packet->insertAtFront(tcpHeader);
+    else{
+        //ICMP packet transmitted - deactivate router
+        isActive = false;
+    }
     ipv4Header->setTotalLengthField(ipv4Header->getChunkLength() + packet->getDataLength());
     packet->insertAtFront(ipv4Header);
-
     emit(packetPulledSignal, packet);
     animatePullPacket(packet, outputGate);
     updateDisplayString();

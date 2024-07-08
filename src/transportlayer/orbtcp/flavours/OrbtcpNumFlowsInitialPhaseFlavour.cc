@@ -127,7 +127,7 @@ void OrbtcpNumFlowsInitialPhaseFlavour::rttMeasurementComplete(simtime_t tSent, 
     conn->emit(rtoSignal, rto);
 }
 
-void OrbtcpNumFlowsInitialPhaseFlavour::receivedDataAckInt(uint32_t firstSeqAcked, IntDataVec intData)
+void OrbtcpNumFlowsInitialPhaseFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
     EV_INFO << "\nORBTCPInfo ___________________________________________" << endl;
     EV_INFO << "\nORBTCPInfo - Received Data Ack" << endl;
@@ -353,7 +353,7 @@ size_t OrbtcpNumFlowsInitialPhaseFlavour::getConnId()
     return connId;
 }
 
-simtime_t OrbtcpNumFlowsInitialPhaseFlavour::getSrtt()
+simtime_t OrbtcpNumFlowsInitialPhaseFlavour::getRtt()
 {
     return estimatedRtt;
 }

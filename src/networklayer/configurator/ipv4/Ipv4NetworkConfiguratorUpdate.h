@@ -35,6 +35,8 @@ class Ipv4NetworkConfiguratorUpdate : public Ipv4NetworkConfigurator{
         virtual void handleMessage(cMessage *msg) override;
         virtual void initialize(int stage) override;
 
+        virtual double computeWiredLinkWeight(Link *link, const char *metric, cXMLElement *parameters) override;
+
 
         //virtual void extractTopology(Topology& topology);
 

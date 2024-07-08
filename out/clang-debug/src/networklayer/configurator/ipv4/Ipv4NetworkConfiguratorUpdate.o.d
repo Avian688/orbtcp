@@ -56,15 +56,11 @@
   ../../inet4.4/src/inet/common/packet/tag/SharingTagSet.h \
   ../../inet4.4/src/inet/queueing/contract/IPacketProcessor.h \
   ../../inet4.4/src/inet/queueing/contract/IPassivePacketSink.h \
-  ../../inet4.4/src/inet/networklayer/configurator/ipv4/Ipv4NetworkConfigurator.h \
-  ../../inet4.4/src/inet/common/Topology.h \
-  ../../inet4.4/src/inet/networklayer/configurator/base/L3NetworkConfiguratorBase.h \
-  ../../inet4.4/src/inet/common/PatternMatcher.h \
   ../../inet4.4/src/inet/networklayer/ipv4/IIpv4RoutingTable.h \
   ../../inet4.4/src/inet/networklayer/ipv4/Ipv4Route.h \
-  ../../inet4.4/src/inet/networklayer/ipv4/Ipv4InterfaceData.h \
   ../../inet4.4/src/inet/networklayer/ipv4/Ipv4RoutingTable.h \
   ../../inet4.4/src/inet/networklayer/configurator/base/NetworkConfiguratorBase.h \
+  ../../inet4.4/src/inet/common/Topology.h \
   ../../inet4.4/src/inet/common/packet/chunk/ByteCountChunk.h \
   ../../inet4.4/src/inet/common/ProtocolTag_m.h \
   ../../inet4.4/src/inet/common/Protocol_m.h \
@@ -75,7 +71,11 @@
   ../../inet4.4/src/inet/common/packet/chunk/cPacketChunk.h \
   ../../inet4.4/src/inet/common/packet/chunk/EncryptedChunk.h \
   ../../inet4.4/src/inet/common/packet/chunk/FieldsChunk.h \
-  networklayer/configurator/ipv4/Ipv4NetworkConfiguratorUpdate.h
+  networklayer/configurator/ipv4/Ipv4NetworkConfiguratorUpdate.h \
+  ../../inet4.4/src/inet/networklayer/configurator/ipv4/Ipv4NetworkConfigurator.h \
+  ../../inet4.4/src/inet/networklayer/configurator/base/L3NetworkConfiguratorBase.h \
+  ../../inet4.4/src/inet/common/PatternMatcher.h \
+  ../../inet4.4/src/inet/networklayer/ipv4/Ipv4InterfaceData.h
 
 ../../inet4.4/src/inet/common/INETUtils.h:
 
@@ -191,23 +191,15 @@
 
 ../../inet4.4/src/inet/queueing/contract/IPassivePacketSink.h:
 
-../../inet4.4/src/inet/networklayer/configurator/ipv4/Ipv4NetworkConfigurator.h:
-
-../../inet4.4/src/inet/common/Topology.h:
-
-../../inet4.4/src/inet/networklayer/configurator/base/L3NetworkConfiguratorBase.h:
-
-../../inet4.4/src/inet/common/PatternMatcher.h:
-
 ../../inet4.4/src/inet/networklayer/ipv4/IIpv4RoutingTable.h:
 
 ../../inet4.4/src/inet/networklayer/ipv4/Ipv4Route.h:
 
-../../inet4.4/src/inet/networklayer/ipv4/Ipv4InterfaceData.h:
-
 ../../inet4.4/src/inet/networklayer/ipv4/Ipv4RoutingTable.h:
 
 ../../inet4.4/src/inet/networklayer/configurator/base/NetworkConfiguratorBase.h:
+
+../../inet4.4/src/inet/common/Topology.h:
 
 ../../inet4.4/src/inet/common/packet/chunk/ByteCountChunk.h:
 
@@ -230,3 +222,11 @@
 ../../inet4.4/src/inet/common/packet/chunk/FieldsChunk.h:
 
 networklayer/configurator/ipv4/Ipv4NetworkConfiguratorUpdate.h:
+
+../../inet4.4/src/inet/networklayer/configurator/ipv4/Ipv4NetworkConfigurator.h:
+
+../../inet4.4/src/inet/networklayer/configurator/base/L3NetworkConfiguratorBase.h:
+
+../../inet4.4/src/inet/common/PatternMatcher.h:
+
+../../inet4.4/src/inet/networklayer/ipv4/Ipv4InterfaceData.h:

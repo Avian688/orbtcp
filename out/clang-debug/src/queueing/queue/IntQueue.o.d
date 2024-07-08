@@ -84,7 +84,9 @@
   ../../inet4.4/src/inet/queueing/contract/IActivePacketSource.h \
   ../../inet4.4/src/inet/queueing/contract/IPacketBuffer.h \
   ../../inet4.4/src/inet/queueing/contract/IPacketComparatorFunction.h \
-  ../../inet4.4/src/inet/queueing/contract/IPacketDropperFunction.h
+  ../../inet4.4/src/inet/queueing/contract/IPacketDropperFunction.h \
+  ../../inet4.4/src/inet/networklayer/ipv4/IcmpHeader.h \
+  ../../inet4.4/src/inet/networklayer/ipv4/IcmpHeader_m.h
 
 ../../inet4.4/src/inet/networklayer/ipv4/Ipv4Header_m.h:
 
@@ -259,3 +261,7 @@ queueing/queue/IntQueue.h:
 ../../inet4.4/src/inet/queueing/contract/IPacketComparatorFunction.h:
 
 ../../inet4.4/src/inet/queueing/contract/IPacketDropperFunction.h:
+
+../../inet4.4/src/inet/networklayer/ipv4/IcmpHeader.h:
+
+../../inet4.4/src/inet/networklayer/ipv4/IcmpHeader_m.h:

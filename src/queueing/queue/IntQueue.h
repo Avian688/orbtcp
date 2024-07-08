@@ -29,6 +29,7 @@ protected:
     static simsignal_t persistentQueueingDelaySignal;
     static simsignal_t numOfFlowsInInitialPhaseSignal;
 
+    bool isActive;
     long txBytes;
     simtime_t avgRtt;
     int numbOfFlows;

@@ -106,7 +106,7 @@ void HpccFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAcked)
     conn->emit(rtoSignal, rto);
 }
 
-void HpccFlavour::receivedDataAckInt(uint32_t firstSeqAcked, IntDataVec intData)
+void HpccFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
     EV_INFO << "\nORBTCPInfo ___________________________________________" << endl;
     EV_INFO << "\nORBTCPInfo - Received Data Ack" << endl;
@@ -256,7 +256,7 @@ size_t HpccFlavour::getConnId()
     return connId;
 }
 
-simtime_t HpccFlavour::getSrtt()
+simtime_t HpccFlavour::getRtt()
 {
     return rtt;
 }

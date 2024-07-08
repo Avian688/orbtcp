@@ -47,15 +47,18 @@ public:
     virtual uint32_t sendSegment(uint32_t bytes) override;
     virtual void sendToIP(Packet *packet, const Ptr<TcpHeader> &tcpseg) override;
     virtual void changeIntersendingTime(simtime_t _intersendingTime);
+    virtual void setPipe() override;
 private:
     virtual void processPaceTimer();
     void addPacket(Packet *packet);
+    virtual Packet* addIntTags(Packet* packet);
 public:
     virtual void sendIntAck(IntDataVec intData);
 protected:
     cOutVector paceValueVec;
     cOutVector bufferedPacketsVec;
     bool pace;
+    simtime_t paceStart;
 public:
     std::queue<Packet*> packetQueue;
     cMessage *paceMsg;

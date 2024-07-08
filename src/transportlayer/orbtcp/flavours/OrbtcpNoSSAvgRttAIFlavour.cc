@@ -117,7 +117,7 @@ void OrbtcpNoSSAvgRttAIFlavour::rttMeasurementComplete(simtime_t tSent, simtime_
     conn->emit(rtoSignal, rto);
 }
 
-void OrbtcpNoSSAvgRttAIFlavour::receivedDataAckInt(uint32_t firstSeqAcked, IntDataVec intData)
+void OrbtcpNoSSAvgRttAIFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
     EV_INFO << "\nORBTCPInfo ___________________________________________" << endl;
     EV_INFO << "\nORBTCPInfo - Received Data Ack" << endl;
@@ -312,7 +312,7 @@ size_t OrbtcpNoSSAvgRttAIFlavour::getConnId()
     return connId;
 }
 
-simtime_t OrbtcpNoSSAvgRttAIFlavour::getSrtt()
+simtime_t OrbtcpNoSSAvgRttAIFlavour::getRtt()
 {
     //return state->srtt;
     return estimatedRtt;

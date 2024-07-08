@@ -34,20 +34,21 @@ class OrbtcpFamily : public TcpTahoeRenoFamily
     /** Ctor */
     OrbtcpFamily();
 
-    virtual void receivedDataAckInt(uint32_t firstSeqAcked, IntDataVec intData);
-
-    /** Redefine what should happen when dupAck was received, to add congestion window management */
-    virtual void receivedDuplicateAck() override;
+    virtual void receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData);
 
     virtual void receiveSeqChanged(IntDataVec intData);
 
-    virtual simtime_t getSrtt();
+    virtual void receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData);
+
+    virtual simtime_t getRtt();
 
     virtual unsigned int getCwnd();
 
     virtual size_t getConnId();
 
     virtual bool getInitialPhase();
+
+    virtual void receivedOutOfOrderSegment(IntDataVec intData);
 
 
 };

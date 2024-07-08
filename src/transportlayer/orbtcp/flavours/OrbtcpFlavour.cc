@@ -29,6 +29,9 @@ simsignal_t OrbtcpFlavour::queueingDelaySignal = cComponent::registerSignal("que
 simsignal_t OrbtcpFlavour::estimatedRttSignal = cComponent::registerSignal("estimatedRtt");
 simsignal_t OrbtcpFlavour::avgEstimatedRttSignal = cComponent::registerSignal("avgEstimatedRtt");
 simsignal_t OrbtcpFlavour::alphaSignal = cComponent::registerSignal("alpha");
+simsignal_t OrbtcpFlavour::measuringInflightSignal = cComponent::registerSignal("measuringInflight");
+
+simsignal_t OrbtcpFlavour::testRttSignal = cComponent::registerSignal("testRtt");
 
 OrbtcpFlavour::OrbtcpFlavour() : OrbtcpFamily(),
     state((OrbtcpStateVariables *&)TcpAlgorithm::state)
@@ -46,12 +49,9 @@ void OrbtcpFlavour::initialize()
     state->eta = conn->getTcpMain()->par("eta");
     state->T = conn->getTcpMain()->par("basePropagationRTT");
     state->queueingDelay = 0;
-    //TODO add Par for number of N. Currently is 10 meaning 10 flows. Look at paper for wAI
-    //state->additiveIncrease = ((state->B * state->T.dbl())*(1-state->eta))/state->sharingFlows;
     state->additiveIncrease = 1;
-    //std::cout << "\n additiveIncrease factor: " << state->additiveIncrease << endl;
-    //state->prevWnd = state->B * state->T.dbl();
     state->prevWnd = 10000;
+
     state->alpha = conn->getTcpMain()->par("alpha");
     if(state->alpha > 0){
         state->useHpccAlpha = false;
@@ -126,47 +126,34 @@ void OrbtcpFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAcked)
     conn->emit(rtoSignal, rto);
 }
 
-void OrbtcpFlavour::receivedDataAckInt(uint32_t firstSeqAcked, IntDataVec intData)
+void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
     EV_INFO << "\nORBTCPInfo ___________________________________________" << endl;
     EV_INFO << "\nORBTCPInfo - Received Data Ack" << endl;
 
     TcpTahoeRenoFamily::receivedDataAck(firstSeqAcked);
-
-    if (state->dupacks >= state->dupthresh) {
-        //
-        // Perform Fast Recovery: set cwnd to ssthresh (deflating the window).
-        //
-        EV_INFO << "Fast Recovery: setting cwnd to ssthresh=" << state->ssthresh << "\n";
-        state->snd_cwnd = 7300;
+    if(firstSeqAcked > state->lastUpdateSeq) {
+        double uVal = measureInflight(intData);
+        if(uVal > 0){
+            state->snd_cwnd = computeWnd(uVal, true);
+        }
         conn->emit(cwndSignal, state->snd_cwnd);
+        state->lastUpdateSeq = state->snd_nxt;
     }
     else {
-        if(firstSeqAcked > state->lastUpdateSeq) {
-            double uVal = measureInflight(intData);
-            if(uVal > 0){
-                state->snd_cwnd = computeWnd(uVal, true);
-                if(state->snd_cwnd > 0){
-                    dynamic_cast<OrbtcpConnection*>(conn)->changeIntersendingTime(estimatedRtt.dbl()/((double) state->snd_cwnd/1460));
-                }
-                //state->ssthresh = state->snd_cwnd / 2;
-            }
-            conn->emit(cwndSignal, state->snd_cwnd);
-            state->lastUpdateSeq = state->snd_nxt;
+        double uVal = measureInflight(intData);
+        if(uVal > 0){
+            state->snd_cwnd = computeWnd(uVal, false);
         }
-        else {
-            double uVal = measureInflight(intData);
-            if(uVal > 0){
-                state->snd_cwnd = computeWnd(uVal, false);
-                if(state->snd_cwnd > 0){
-                    dynamic_cast<OrbtcpConnection*>(conn)->changeIntersendingTime(estimatedRtt.dbl()/((double) state->snd_cwnd/1460));
-                }
-            }
-            conn->emit(cwndSignal, state->snd_cwnd);
-        }
+        conn->emit(cwndSignal, state->snd_cwnd);
     }
-
+    if(state->snd_cwnd > 0){
+        double pace = estimatedRtt.dbl()/((double) state->snd_cwnd/(double)state->snd_mss);
+        dynamic_cast<OrbtcpConnection*>(conn)->changeIntersendingTime(pace);
+    }
     state->L = intData;
+
+    // Check if recovery phase has ended
     if (state->sack_enabled && state->lossRecovery) {
             // RFC 3517, page 7: "Once a TCP is in the loss recovery phase the following procedure MUST
             // be used for each arriving ACK:
@@ -181,6 +168,7 @@ void OrbtcpFlavour::receivedDataAckInt(uint32_t firstSeqAcked, IntDataVec intDat
             if (seqGE(state->snd_una, state->recoveryPoint)) {
                 EV_INFO << "Loss Recovery terminated.\n";
                 state->lossRecovery = false;
+                conn->emit(lossRecoverySignal, 0);
             }
             // RFC 3517, page 7: "(B) Upon receipt of an ACK that does not cover RecoveryPoint the
             // following actions MUST be taken:
@@ -221,6 +209,9 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     double bottleneckBandwidth;
     double bottleneckTxRate;
     double totalQueueingDelay = 0;
+
+    double bottleneckRtt;
+
     for(int i = 0; i < intData.size(); i++){ //Start at front of queue. First item is first hop etc.
         double uPrime = 0;
         IntMetaData* intDataEntry = intData.at(i);
@@ -245,6 +236,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
                     state->sharingFlows = intDataEntry->getNumOfFlows();
                     state->initialPhaseSharingFlows = intDataEntry->getNumOfFlowsInInitialPhase();
                     bottleneckAverageRtt = intDataEntry->getAverageRtt();
+                    bottleneckRtt = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
                     bottleneckTxRate = state->txRate;
                     if(bottleneckAverageRtt <= 0){
                         bottleneckAverageRtt = estimatedRtt.dbl();
@@ -269,6 +261,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
                 u = uPrime;
                 tau = intDataEntry->getTs().dbl();
                 bottleneckAverageRtt = intDataEntry->getAverageRtt();
+                bottleneckRtt = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
                 bottleneckTxRate = state->txRate;
                 if(bottleneckAverageRtt <= 0){
                     bottleneckAverageRtt = estimatedRtt.dbl();
@@ -278,6 +271,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
         }
     }
 
+    state->bottBW = bottleneckBandwidth;
     state->queueingDelay = totalQueueingDelay;
     conn->emit(queueingDelaySignal, state->queueingDelay);
     conn->emit(avgEstimatedRttSignal, bottleneckAverageRtt);
@@ -298,51 +292,63 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     conn->emit(alphaSignal, state->alpha);
     conn->emit(USignal, state->u);
 
-    state->ssthresh = ((bottleneckBandwidth * rtt.dbl()) * state->eta)/state->sharingFlows;
+    state->ssthresh = ((((bottleneckBandwidth)/state->sharingFlows) * estimatedRtt.dbl()) * 0.95);
     if(!state->initialPhase || state->snd_cwnd > state->ssthresh){ //slow start - more aggressive till max allowed share is reached
-        state->additiveIncrease = ((bottleneckBandwidth * rtt.dbl()) * state->additiveIncreasePercent)/state->sharingFlows;
+        state->additiveIncrease = ((((bottleneckBandwidth)/state->sharingFlows) * rtt.dbl()) * state->additiveIncreasePercent);
         state->ssthresh = 0;
         state->initialPhase = false;
     }
     else{
         if(state->initialPhaseSharingFlows > 1){
-            state->additiveIncrease = ((bottleneckBandwidth * rtt.dbl()) * state->additiveIncreasePercent)/state->initialPhaseSharingFlows;
+            state->additiveIncrease = ((((bottleneckBandwidth)/state->initialPhaseSharingFlows) * rtt.dbl()) * state->additiveIncreasePercent);
         }
         else{
             state->additiveIncrease = (bottleneckBandwidth * rtt.dbl()) * state->additiveIncreasePercent;
         }
     }
 
+    conn->emit(testRttSignal, bottleneckRtt);
     conn->emit(bottleneckBandwidthSignal, bottleneckBandwidth);
     conn->emit(avgRttSignal, bottleneckAverageRtt);
     conn->emit(additiveIncreaseSignal, state->additiveIncrease);
     conn->emit(ssthreshSignal, state->ssthresh);
-
     return state->u;
 }
 
 uint32_t OrbtcpFlavour::computeWnd(double u, bool updateWc)
 {
-    uint32_t w;
+    uint32_t targetW;
     double targetEta = state->eta;
 //    if(!state->initialPhase && state->initialPhaseSharingFlows > 0){
 //        targetEta = state->eta - state->additiveIncreasePercent;
 //    }
-    if(u >= targetEta || state->incStage >= state->maxStage) {
-        w = (state->prevWnd/(u/targetEta))+state->additiveIncrease;
-        if(updateWc) {
-            state->incStage = 0;
-            state->prevWnd = w;
+    if(u >= targetEta) { //state->incStage >= state->maxStage
+        targetW = (state->prevWnd/(u/targetEta)) + state->additiveIncrease;
+        if(targetW > state->prevWnd){
+            state->additiveIncreaseGainPerAck = ((double)(targetW - state->prevWnd)/(double)state->prevWnd)*(double)state->snd_mss;
+        }
+        else{
+            state->additiveIncreaseGainPerAck = 0;
         }
     }
     else {
-        w = state->prevWnd + state->additiveIncrease;
-        if(updateWc) {
-            state->incStage++;
-            state->prevWnd = w;
-        }
+        //w = state->prevWnd + state->additiveIncrease;
+        //w = state->prevWnd + state->additiveIncrease;
+        state->additiveIncreaseGainPerAck = ((double)state->additiveIncrease/(double)state->prevWnd)*(double)state->snd_mss;
+        //targetW = state->snd_cwnd + ((double)state->additiveIncrease/(double)state->prevWnd)*1460;
+        targetW = state->prevWnd + state->additiveIncrease;
     }
-    return w;
+
+    if(updateWc) {
+        state->prevWnd = targetW;
+    }
+
+    if(targetW > state->prevWnd && targetW > state->snd_cwnd){
+        return state->snd_cwnd + state->additiveIncreaseGainPerAck;
+    }
+    else{
+        return targetW;
+    }
 }
 
 size_t OrbtcpFlavour::getConnId()
@@ -350,9 +356,103 @@ size_t OrbtcpFlavour::getConnId()
     return connId;
 }
 
-simtime_t OrbtcpFlavour::getSrtt()
+simtime_t OrbtcpFlavour::getRtt()
 {
     return estimatedRtt;
+}
+
+void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData) {
+    TcpTahoeRenoFamily::receivedDuplicateAck();
+    if (state->dupacks >= state->dupthresh) {
+        if (!state->lossRecovery
+                && (state->recoveryPoint == 0
+                        || seqGE(state->snd_una, state->recoveryPoint))) {
+
+            state->recoveryPoint = state->snd_max; // HighData = snd_max
+            state->lossRecovery = true;
+            EV_DETAIL << " recoveryPoint=" << state->recoveryPoint;
+            conn->emit(lossRecoverySignal, state->snd_cwnd);
+
+            // enter Fast Recovery
+            //recalculateSlowStartThreshold();
+            // "set cwnd to ssthresh plus 3 * SMSS." (RFC 2581)
+            //state->snd_cwnd = state->ssthresh + state->dupthresh*state->snd_mss;
+
+            EV_DETAIL << " set cwnd=" << state->snd_cwnd << ", ssthresh="
+                             << state->ssthresh << "\n";
+
+            // Fast Retransmission: retransmit missing segment without waiting
+            // for the REXMIT timer to expire
+            //state->rtseq_sendtime = 0;
+            conn->retransmitOneSegment(false);
+            conn->emit(highRxtSignal, state->highRxt);
+        }
+    }
+
+    if(firstSeqAcked > state->lastUpdateSeq) {
+        double uVal = measureInflight(intData);
+        if(uVal > 0){
+            state->snd_cwnd = computeWnd(uVal, true);
+        }
+        conn->emit(cwndSignal, state->snd_cwnd);
+        state->lastUpdateSeq = state->snd_nxt;
+    }
+    else {
+        double uVal = measureInflight(intData);
+        if(uVal > 0){
+            state->snd_cwnd = computeWnd(uVal, false);
+        }
+        conn->emit(cwndSignal, state->snd_cwnd);
+    }
+    state->L = intData;
+
+    if(state->snd_cwnd > 0){
+        dynamic_cast<OrbtcpConnection*>(conn)->changeIntersendingTime(estimatedRtt.dbl()/((double) state->snd_cwnd/(double)state->snd_mss));
+    }
+
+    conn->emit(cwndSignal, state->snd_cwnd);
+
+    if (state->lossRecovery) {
+        conn->setPipe();
+
+        if (((int) (state->snd_cwnd / state->snd_mss)
+                - (int) (state->pipe / (state->snd_mss - 12))) >= 1) { // Note: Typecast needed to avoid prohibited transmissions
+            conn->sendDataDuringLossRecoveryPhase(state->snd_cwnd);
+        }
+    }
+}
+
+void OrbtcpFlavour::processRexmitTimer(TcpEventCode &event) {
+    TcpTahoeRenoFamily::processRexmitTimer(event);
+
+    if (event == TCP_E_ABORT)
+        return;
+
+    // After REXMIT timeout TCP Reno should start slow start with snd_cwnd = snd_mss.
+    //
+    // If calling "retransmitData();" there is no rexmit limitation (bytesToSend > snd_cwnd)
+    // therefore "sendData();" has been modified and is called to rexmit outstanding data.
+    //
+    // RFC 2581, page 5:
+    // "Furthermore, upon a timeout cwnd MUST be set to no more than the loss
+    // window, LW, which equals 1 full-sized segment (regardless of the
+    // value of IW).  Therefore, after retransmitting the dropped segment
+    // the TCP sender uses the slow start algorithm to increase the window
+    // from 1 full-sized segment to the new value of ssthresh, at which
+    // point congestion avoidance again takes over."
+
+    // begin Slow Start (RFC 2581)
+    //recalculateSlowStartThreshold();
+    //state->snd_cwnd = state->snd_mss;
+
+    conn->emit(cwndSignal, state->snd_cwnd);
+
+    EV_INFO << "Begin Slow Start: resetting cwnd to " << state->snd_cwnd
+                   << ", ssthresh=" << state->ssthresh << "\n";
+
+    state->afterRto = true;
+
+    conn->retransmitOneSegment(true);
 }
 
 } // namespace tcp

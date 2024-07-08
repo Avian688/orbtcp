@@ -585,7 +585,13 @@ TcpEventCode OrbtcpConnection::processSegment1stThru8th(Packet *tcpSegment, cons
                         }
                     }
 
-                    tcpAlgorithm->receivedOutOfOrderSegment();
+                    if(tcpHeader->findTag<IntTag>()){
+                        IntDataVec intDataNew = tcpHeader->getTag<IntTag>()->getIntData();
+                        dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->receivedOutOfOrderSegment(tcpHeader->getTag<IntTag>()->getIntData());
+                    }
+                    else{
+                        tcpAlgorithm->receivedOutOfOrderSegment();
+                    }
                 }
                 else {
                     // forward data to app
@@ -838,7 +844,13 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             // could have been changed if faulty data receiver is not respecting the "do not shrink window" rule
             updateWndInfo(tcpHeader);
 
-            tcpAlgorithm->receivedDuplicateAck();
+            if(tcpHeader->findTag<IntTag>()){
+                IntDataVec intDataNew = tcpHeader->getTag<IntTag>()->getIntData();
+                dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->receivedDuplicateAck(state->snd_una, tcpHeader->getTag<IntTag>()->getIntData());
+            }
+            else{
+                tcpAlgorithm->receivedDuplicateAck();
+            }
         }
         else {
             // if doesn't qualify as duplicate ACK, just ignore it.
@@ -907,7 +919,7 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
 
             if(tcpHeader->findTag<IntTag>()){
                 IntDataVec intDataNew = tcpHeader->getTag<IntTag>()->getIntData();
-                dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->receivedDataAckInt(old_snd_una, tcpHeader->getTag<IntTag>()->getIntData());
+                dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->receivedDataAck(old_snd_una, tcpHeader->getTag<IntTag>()->getIntData());
             }
             else{ //D-SACK
 
@@ -1029,9 +1041,12 @@ void OrbtcpConnection::addPacket(Packet *packet)
 {
     Enter_Method("addPacket");
     if (packetQueue.empty()) {
-        if (intersendingTime != 0)
+        if (intersendingTime != 0){
+            paceStart = simTime();
             scheduleAt(simTime() + intersendingTime, paceMsg);
+        }
         else {
+            paceStart = simTime();
             scheduleAt(simTime() + 0.05, paceMsg);
         }
     }
@@ -1041,18 +1056,20 @@ void OrbtcpConnection::addPacket(Packet *packet)
 
 void OrbtcpConnection::processPaceTimer()
 {
-
-    tcpMain->sendFromConn(packetQueue.front(), "ipOut");
+    Packet* packet = addIntTags(packetQueue.front());
+    tcpMain->sendFromConn(packet, "ipOut");
 
     packetQueue.pop();
     bufferedPacketsVec.record(packetQueue.size());
 
     if (!packetQueue.empty()) {
-        if (intersendingTime != 0)
+        if (intersendingTime != 0){
+            paceStart = simTime();
             scheduleAt(simTime() + intersendingTime, paceMsg);
+        }
         else {
-            scheduleAt(simTime() + 0.05, paceMsg);
-            std::cout << "\n scheduling set intersending time " << endl;
+            paceStart = simTime();
+            scheduleAt(simTime() + 0.0001, paceMsg);
         }
             //throw cRuntimeError("Pace is not set.");
     }
@@ -1141,10 +1158,6 @@ uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
 
     ASSERT(tcpHeader->getHeaderLength() == tmpTcpHeader->getHeaderLength());
 
-    tcpHeader->addTagIfAbsent<IntTag>()->setConnId((unsigned long)dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getConnId());
-    tcpHeader->addTagIfAbsent<IntTag>()->setRtt(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getSrtt());
-    tcpHeader->addTagIfAbsent<IntTag>()->setCwnd(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getCwnd());
-    tcpHeader->addTagIfAbsent<IntTag>()->setInitialPhase(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getInitialPhase());
     // send it
     sendToIP(tcpSegment, tcpHeader);
 
@@ -1244,17 +1257,101 @@ void OrbtcpConnection::changeIntersendingTime(simtime_t _intersendingTime)
     //std::cout << "New pace: " << intersendingTime << "s" << std::endl;
     paceValueVec.record(intersendingTime);
     if (paceMsg->isScheduled()) {
-        simtime_t newArrivalTime = paceMsg->getCreationTime() + intersendingTime;
+        simtime_t newArrivalTime = paceStart + intersendingTime;
         if (newArrivalTime < simTime()) {
-            cancelEvent(paceMsg);
-            scheduleAt(simTime(), paceMsg);
+            paceStart = simTime();
+            rescheduleAt(simTime(), paceMsg);
         }
         else {
-            cancelEvent(paceMsg);
-            scheduleAt(newArrivalTime, paceMsg);
+            paceStart = simTime();
+            rescheduleAt(newArrivalTime, paceMsg);
         }
     }
 
+}
+
+Packet* OrbtcpConnection::addIntTags(Packet* packet) {
+    inet::Ptr<TcpHeader> tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
+
+    if(packet->getDataLength() > b(0)) { //Data Packet
+        tcpHeader->addTagIfAbsent<IntTag>()->setConnId((unsigned long)dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getConnId());
+        tcpHeader->addTagIfAbsent<IntTag>()->setRtt(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getRtt());
+        tcpHeader->addTagIfAbsent<IntTag>()->setCwnd(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getCwnd());
+        tcpHeader->addTagIfAbsent<IntTag>()->setInitialPhase(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getInitialPhase());
+    }
+    //std::cout << "\n PROTOCOL: " << packet->getTag<PacketProtocolTag>()->getProtocol()->str() << endl;
+    packet->insertAtFront(tcpHeader);
+
+    //std::cout << "\n TIME WHEN PACKET SENT: " << simTime() << endl;
+    return packet;
+}
+
+void OrbtcpConnection::setPipe() {
+    ASSERT(state->sack_enabled);
+
+    // RFC 3517, pages 1 and 2: "
+    // "HighACK" is the sequence number of the highest byte of data that
+    // has been cumulatively ACKed at a given point.
+    //
+    // "HighData" is the highest sequence number transmitted at a given
+    // point.
+    //
+    // "HighRxt" is the highest sequence number which has been
+    // retransmitted during the current loss recovery phase.
+    //
+    // "Pipe" is a sender's estimate of the number of bytes outstanding
+    // in the network.  This is used during recovery for limiting the
+    // sender's sending rate.  The pipe variable allows TCP to use a
+    // fundamentally different congestion control than specified in
+    // [RFC2581].  The algorithm is often referred to as the "pipe
+    // algorithm"."
+    // HighAck = snd_una
+    // HighData = snd_max
+
+    state->highRxt = rexmitQueue->getHighestRexmittedSeqNum();
+    state->pipe = 0;
+    uint32_t length = 0; // required for rexmitQueue->checkSackBlock()
+    bool sacked; // required for rexmitQueue->checkSackBlock()
+    bool rexmitted; // required for rexmitQueue->checkSackBlock()
+
+    // RFC 3517, page 3: "This routine traverses the sequence space from HighACK to HighData
+    // and MUST set the "pipe" variable to an estimate of the number of
+    // octets that are currently in transit between the TCP sender and
+    // the TCP receiver.  After initializing pipe to zero the following
+    // steps are taken for each octet 'S1' in the sequence space between
+    // HighACK and HighData that has not been SACKed:"
+    for (uint32_t s1 = state->snd_una; seqLess(s1, state->snd_max); s1 +=
+            length) {
+        rexmitQueue->checkSackBlock(s1, length, sacked, rexmitted);
+
+        if (!sacked) {
+            // RFC 3517, page 3: "(a) If IsLost (S1) returns false:
+            //
+            //     Pipe is incremented by 1 octet.
+            //
+            //     The effect of this condition is that pipe is incremented for
+            //     packets that have not been SACKed and have not been determined
+            //     to have been lost (i.e., those segments that are still assumed
+            //     to be in the network)."
+            if (isLost(s1) == false)
+                state->pipe += length;
+
+            // RFC 3517, pages 3 and 4: "(b) If S1 <= HighRxt:
+            //
+            //     Pipe is incremented by 1 octet.
+            //
+            //     The effect of this condition is that pipe is incremented for
+            //     the retransmission of the octet.
+            //
+            //  Note that octets retransmitted without being considered lost are
+            //  counted twice by the above mechanism."
+            if (seqLess(s1, state->highRxt))
+                state->pipe += length;
+        }
+    }
+    state->pipe = state->pipe - (packetQueue.size()*state->snd_mss);
+
+    emit(pipeSignal, state->pipe);
 }
 
 }

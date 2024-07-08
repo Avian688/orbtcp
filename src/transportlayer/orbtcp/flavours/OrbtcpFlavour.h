@@ -48,6 +48,8 @@ class OrbtcpFlavour : public OrbtcpFamily
     static simsignal_t estimatedRttSignal;
     static simsignal_t avgEstimatedRttSignal;
     static simsignal_t alphaSignal;
+    static simsignal_t measuringInflightSignal;
+    static simsignal_t testRttSignal;
 
     size_t connId;
     simtime_t rtt;
@@ -61,6 +63,9 @@ class OrbtcpFlavour : public OrbtcpFamily
 
     virtual void initialize() override;
 
+    /** Redefine what should happen on retransmission */
+    virtual void processRexmitTimer(TcpEventCode& event) override;
+
   public:
     /** Constructor */
     OrbtcpFlavour();
@@ -69,7 +74,7 @@ class OrbtcpFlavour : public OrbtcpFamily
 
     virtual void rttMeasurementComplete(simtime_t tSent, simtime_t tAcked) override;
 
-    virtual void receivedDataAckInt(uint32_t firstSeqAcked, IntDataVec intData) override;
+    virtual void receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData) override;
 
     virtual uint32_t computeWnd(double u, bool updateWc);
 
@@ -77,7 +82,11 @@ class OrbtcpFlavour : public OrbtcpFamily
 
     virtual size_t getConnId() override;
 
-    virtual simtime_t getSrtt() override;
+    virtual simtime_t getRtt() override;
+
+    /** Redefine what should happen when dupAck was received, to add congestion window management */
+
+    virtual void receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData) override;
 
     };
 

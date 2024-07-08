@@ -21,7 +21,6 @@
 #include "inet/common/stlutils.h"
 #include "inet/common/XMLUtils.h"
 #include "inet/networklayer/common/L3AddressResolver.h"
-#include "inet/networklayer/configurator/ipv4/Ipv4NetworkConfigurator.h"
 #include "inet/networklayer/ipv4/IIpv4RoutingTable.h"
 #include "inet/networklayer/ipv4/Ipv4RoutingTable.h"
 #include "inet/networklayer/configurator/base/NetworkConfiguratorBase.h"
@@ -86,6 +85,7 @@ void Ipv4NetworkConfiguratorUpdate::initialize(int stage)
     }
     timer = new cMessage("TopologyTimer");
     scheduleAt(0 + timerInterval, timer);  //Schedule reinvoking process.
+
     L3NetworkConfiguratorBase::initialize(stage);
     if (stage == INITSTAGE_LOCAL) {
         assignAddressesParameter = par("assignAddresses");
@@ -111,15 +111,15 @@ void Ipv4NetworkConfiguratorUpdate::handleMessage(cMessage *msg)
 {
     if (msg == timer) {
         cXMLElementList autorouteElements = configuration->getChildrenByTagName("autoroute");
-                if (autorouteElements.size() == 0) {
-                    cXMLElement defaultAutorouteElement("autoroute", "", nullptr);
-                    Ipv4NetworkConfiguratorUpdate::reinvokeConfigurator(topology, &defaultAutorouteElement);
-                }
-                else {
-                    for (auto & autorouteElement : autorouteElements)
-                        Ipv4NetworkConfiguratorUpdate::reinvokeConfigurator(topology, autorouteElement);
-                }
-       scheduleAt(simTime() + timerInterval, timer);  // rescheduling
+        if (autorouteElements.size() == 0) {
+            cXMLElement defaultAutorouteElement("autoroute", "", nullptr);
+            Ipv4NetworkConfiguratorUpdate::reinvokeConfigurator(topology, &defaultAutorouteElement);
+        }
+        else {
+            for (auto & autorouteElement : autorouteElements)
+                Ipv4NetworkConfiguratorUpdate::reinvokeConfigurator(topology, autorouteElement);
+        }
+        scheduleAt(simTime() + timerInterval, timer);
     }
 }
 
@@ -207,6 +207,34 @@ void Ipv4NetworkConfiguratorUpdate::configureRoutingTable(IIpv4RoutingTable *rou
  */
 void Ipv4NetworkConfiguratorUpdate::configureRoutingTable(Node *node)
 {
+//    EV_DETAIL << "Configuring routing table of " << node->getModule()->getFullPath() << ".\n";
+//    for (size_t i = 0; i < node->staticRoutes.size(); i++) {
+//        Ipv4Route *original = node->staticRoutes[i];
+//        Ipv4Route *clone = new Ipv4Route();
+//        clone->setMetric(original->getMetric());
+//        clone->setSourceType(original->getSourceType());
+//        clone->setSource(original->getSource());
+//        clone->setDestination(original->getDestination());
+//        clone->setNetmask(original->getNetmask());
+//        clone->setGateway(original->getGateway());
+//        clone->setInterface(original->getInterface());
+//        node->routingTable->addRoute(clone);
+//    }
+//    for (size_t i = 0; i < node->staticMulticastRoutes.size(); i++) {
+//        Ipv4MulticastRoute *original = node->staticMulticastRoutes[i];
+//        Ipv4MulticastRoute *clone = new Ipv4MulticastRoute();
+//        clone->setMetric(original->getMetric());
+//        clone->setSourceType(original->getSourceType());
+//        clone->setSource(original->getSource());
+//        clone->setOrigin(original->getOrigin());
+//        clone->setOriginNetmask(original->getOriginNetmask());
+//        clone->setInInterface(original->getInInterface());
+//        clone->setMulticastGroup(original->getMulticastGroup());
+//        for (size_t j = 0; j < original->getNumOutInterfaces(); j++)
+//            clone->addOutInterface(new IMulticastRoute::OutInterface(*original->getOutInterface(j)));
+//        node->routingTable->addMulticastRoute(clone);
+//    }
+
     EV_DETAIL << "Configuring routing table of " << node->getModule()->getFullPath() << ".\n";
     for (size_t i = 0; i < node->staticRoutes.size(); i++) {
         Ipv4Route *original = node->staticRoutes[i];
@@ -268,4 +296,52 @@ static double parseCostAttribute(const char *costAttribute)
 }
 
 
+double Ipv4NetworkConfiguratorUpdate::computeWiredLinkWeight(Link *link, const char *metric, cXMLElement *parameters)
+{
+    const char *costAttribute = parameters->getAttribute("cost");
+    if (costAttribute != nullptr)
+        return parseCostAttribute(costAttribute);
+    else {
+        Topology::Link *linkOut = static_cast<Topology::Link *>(static_cast<Topology::Link *>(link));
+        if (!strcmp(metric, "hopCount"))
+            return 1;
+        else if (!strcmp(metric, "delay")) {
+            cDatarateChannel *transmissionChannel = dynamic_cast<cDatarateChannel *>(linkOut->getLinkOutLocalGate()->findTransmissionChannel());
+            if (transmissionChannel != nullptr)
+                return transmissionChannel->getDelay().dbl();
+            else
+                return minLinkWeight;
+        }
+        else if (!strcmp(metric, "dataRate")) {
+            cChannel *transmissionChannel = linkOut->getLinkOutLocalGate()->findTransmissionChannel();
+            if (transmissionChannel != nullptr) {
+                double dataRate = transmissionChannel->getNominalDatarate();
+                return dataRate != 0 ? 1 / dataRate : minLinkWeight;
+            }
+            else
+                return minLinkWeight;
+        }
+        else if (!strcmp(metric, "errorRate")) {
+            cDatarateChannel *transmissionChannel = dynamic_cast<cDatarateChannel *>(linkOut->getLinkOutLocalGate()->findTransmissionChannel());
+            if (transmissionChannel != nullptr) {
+                L3NetworkConfiguratorBase::InterfaceInfo *sourceInterfaceInfo = link->sourceInterfaceInfo;
+                double bitErrorRate = transmissionChannel->getBitErrorRate();
+                double packetErrorRate = 1.0 - pow(1.0 - bitErrorRate, sourceInterfaceInfo->networkInterface->getMtu());
+                return minLinkWeight - log(1 - packetErrorRate);
+            }
+            else
+                return minLinkWeight;
+        }
+        else if (!strcmp(metric, "weight")) {
+            cDatarateChannel *transmissionChannel = dynamic_cast<cDatarateChannel *>(linkOut->getLinkOutLocalGate()->findTransmissionChannel());
+            if(transmissionChannel->findPar("weight") != -1) { //returns -1 if object not found
+                return transmissionChannel->par("weight").intValue();
+            }
+            else
+                return 1;
+        }
+        else
+            throw cRuntimeError("Unknown metric");
+    }
+}
 }

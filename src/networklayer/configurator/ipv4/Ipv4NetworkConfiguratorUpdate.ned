@@ -55,6 +55,5 @@ simple Ipv4NetworkConfiguratorUpdate extends Ipv4NetworkConfigurator
     parameters:
         @class(inet::Ipv4NetworkConfiguratorUpdate);
         @display("i=block/cogwheel");
-        bool enableInterSatelliteLinks = default(true);
-        double updateInterval @unit(s) = default(1.000001s);
+        double updateInterval @unit(s) = default(1s);
 }

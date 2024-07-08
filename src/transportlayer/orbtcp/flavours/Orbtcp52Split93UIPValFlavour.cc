@@ -127,7 +127,7 @@ void Orbtcp52Split93UIPValFlavour::rttMeasurementComplete(simtime_t tSent, simti
     conn->emit(rtoSignal, rto);
 }
 
-void Orbtcp52Split93UIPValFlavour::receivedDataAckInt(uint32_t firstSeqAcked, IntDataVec intData)
+void Orbtcp52Split93UIPValFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
     EV_INFO << "\nORBTCPInfo ___________________________________________" << endl;
     EV_INFO << "\nORBTCPInfo - Received Data Ack" << endl;
@@ -355,7 +355,7 @@ size_t Orbtcp52Split93UIPValFlavour::getConnId()
     return connId;
 }
 
-simtime_t Orbtcp52Split93UIPValFlavour::getSrtt()
+simtime_t Orbtcp52Split93UIPValFlavour::getRtt()
 {
     //return state->srtt;
     return estimatedRtt;

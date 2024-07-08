@@ -126,7 +126,7 @@ void OrbtcpIPCutOffFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tA
     conn->emit(rtoSignal, rto);
 }
 
-void OrbtcpIPCutOffFlavour::receivedDataAckInt(uint32_t firstSeqAcked, IntDataVec intData)
+void OrbtcpIPCutOffFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
     EV_INFO << "\nORBTCPInfo ___________________________________________" << endl;
     EV_INFO << "\nORBTCPInfo - Received Data Ack" << endl;
@@ -354,7 +354,7 @@ size_t OrbtcpIPCutOffFlavour::getConnId()
     return connId;
 }
 
-simtime_t OrbtcpIPCutOffFlavour::getSrtt()
+simtime_t OrbtcpIPCutOffFlavour::getRtt()
 {
     return estimatedRtt;
 }

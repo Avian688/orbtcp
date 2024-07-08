@@ -7,7 +7,7 @@
 #include <algorithm> // min,max
 
 #include "inet/transportlayer/tcp/Tcp.h"
-#include "OrbtcpAIorMDFlavour.h"
+#include "OrbtcpNoReactLossFlavour.h"
 
 namespace inet {
 namespace tcp {
@@ -15,32 +15,33 @@ namespace tcp {
 #define MIN_REXMIT_TIMEOUT     1.0   // 1s
 #define MAX_REXMIT_TIMEOUT     240   // 2 * MSL (RFC 1122)
 
-Register_Class(OrbtcpAIorMDFlavour);
+Register_Class(OrbtcpNoReactLossFlavour);
 
-simsignal_t OrbtcpAIorMDFlavour::txRateSignal = cComponent::registerSignal("txRate");
-simsignal_t OrbtcpAIorMDFlavour::tauSignal = cComponent::registerSignal("tau");
-simsignal_t OrbtcpAIorMDFlavour::uSignal = cComponent::registerSignal("u");
-simsignal_t OrbtcpAIorMDFlavour::USignal = cComponent::registerSignal("U");
-simsignal_t OrbtcpAIorMDFlavour::additiveIncreaseSignal = cComponent::registerSignal("additiveIncrease");
-simsignal_t OrbtcpAIorMDFlavour::sharingFlowsSignal = cComponent::registerSignal("sharingFlows");
-simsignal_t OrbtcpAIorMDFlavour::bottleneckBandwidthSignal = cComponent::registerSignal("bottleneckBandwidth");
-simsignal_t OrbtcpAIorMDFlavour::avgRttSignal = cComponent::registerSignal("avgRtt");
-simsignal_t OrbtcpAIorMDFlavour::queueingDelaySignal = cComponent::registerSignal("queueingDelay");
-simsignal_t OrbtcpAIorMDFlavour::estimatedRttSignal = cComponent::registerSignal("estimatedRtt");
-simsignal_t OrbtcpAIorMDFlavour::avgEstimatedRttSignal = cComponent::registerSignal("avgEstimatedRtt");
-simsignal_t OrbtcpAIorMDFlavour::alphaSignal = cComponent::registerSignal("alpha");
+simsignal_t OrbtcpNoReactLossFlavour::txRateSignal = cComponent::registerSignal("txRate");
+simsignal_t OrbtcpNoReactLossFlavour::tauSignal = cComponent::registerSignal("tau");
+simsignal_t OrbtcpNoReactLossFlavour::uSignal = cComponent::registerSignal("u");
+simsignal_t OrbtcpNoReactLossFlavour::USignal = cComponent::registerSignal("U");
+simsignal_t OrbtcpNoReactLossFlavour::additiveIncreaseSignal = cComponent::registerSignal("additiveIncrease");
+simsignal_t OrbtcpNoReactLossFlavour::sharingFlowsSignal = cComponent::registerSignal("sharingFlows");
+simsignal_t OrbtcpNoReactLossFlavour::bottleneckBandwidthSignal = cComponent::registerSignal("bottleneckBandwidth");
+simsignal_t OrbtcpNoReactLossFlavour::avgRttSignal = cComponent::registerSignal("avgRtt");
+simsignal_t OrbtcpNoReactLossFlavour::queueingDelaySignal = cComponent::registerSignal("queueingDelay");
+simsignal_t OrbtcpNoReactLossFlavour::estimatedRttSignal = cComponent::registerSignal("estimatedRtt");
+simsignal_t OrbtcpNoReactLossFlavour::avgEstimatedRttSignal = cComponent::registerSignal("avgEstimatedRtt");
+simsignal_t OrbtcpNoReactLossFlavour::alphaSignal = cComponent::registerSignal("alpha");
 
-OrbtcpAIorMDFlavour::OrbtcpAIorMDFlavour() : OrbtcpFamily(),
-    state((OrbtcpAIorMDStateVariables *&)TcpAlgorithm::state)
+OrbtcpNoReactLossFlavour::OrbtcpNoReactLossFlavour() : OrbtcpFamily(),
+    state((OrbtcpNoReactLossStateVariables *&)TcpAlgorithm::state)
 {
 }
 
-void OrbtcpAIorMDFlavour::initialize()
+void OrbtcpNoReactLossFlavour::initialize()
 {
     OrbtcpFamily::initialize();
     state->B = conn->getTcpMain()->par("bandwidth");
     state->subFlows = conn->getTcpMain()->par("subFlows");
     state->sharingFlows = conn->getTcpMain()->par("sharingFlows");
+    state->initialPhaseSharingFlows = 1;
     state->additiveIncreasePercent = conn->getTcpMain()->par("additiveIncreasePercent");
     state->eta = conn->getTcpMain()->par("eta");
     state->T = conn->getTcpMain()->par("basePropagationRTT");
@@ -60,7 +61,7 @@ void OrbtcpAIorMDFlavour::initialize()
     }
 }
 
-void OrbtcpAIorMDFlavour::established(bool active)
+void OrbtcpNoReactLossFlavour::established(bool active)
 {
     //state->snd_cwnd = state->B * state->T.dbl();
     state->snd_cwnd = 7300; //5 packets
@@ -77,7 +78,7 @@ void OrbtcpAIorMDFlavour::established(bool active)
     }
 }
 
-void OrbtcpAIorMDFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAcked)
+void OrbtcpNoReactLossFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAcked)
 {
     //
     // Jacobson's algorithm for estimating RTT and adaptively setting RTO.
@@ -125,7 +126,7 @@ void OrbtcpAIorMDFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAck
     conn->emit(rtoSignal, rto);
 }
 
-void OrbtcpAIorMDFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
+void OrbtcpNoReactLossFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
     EV_INFO << "\nORBTCPInfo ___________________________________________" << endl;
     EV_INFO << "\nORBTCPInfo - Received Data Ack" << endl;
@@ -133,12 +134,7 @@ void OrbtcpAIorMDFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec int
     TcpTahoeRenoFamily::receivedDataAck(firstSeqAcked);
 
     if (state->dupacks >= state->dupthresh) {
-        //
-        // Perform Fast Recovery: set cwnd to ssthresh (deflating the window).
-        //
-        EV_INFO << "Fast Recovery: setting cwnd to ssthresh=" << state->ssthresh << "\n";
-        state->snd_cwnd = 7300;
-        conn->emit(cwndSignal, state->snd_cwnd);
+        //Dont reduce window after loss
     }
     else {
         if(firstSeqAcked > state->lastUpdateSeq) {
@@ -212,7 +208,7 @@ void OrbtcpAIorMDFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec int
         sendData(false);
 }
 
-double OrbtcpAIorMDFlavour::measureInflight(IntDataVec intData)
+double OrbtcpNoReactLossFlavour::measureInflight(IntDataVec intData)
 {
     double u = 0;
     double tau;
@@ -242,11 +238,12 @@ double OrbtcpAIorMDFlavour::measureInflight(IntDataVec intData)
                     u = uPrime;
                     tau = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
                     state->sharingFlows = intDataEntry->getNumOfFlows();
+                    state->initialPhaseSharingFlows = intDataEntry->getNumOfFlowsInInitialPhase();
                     bottleneckAverageRtt = intDataEntry->getAverageRtt();
                     bottleneckTxRate = state->txRate;
                     if(bottleneckAverageRtt <= 0){
                         bottleneckAverageRtt = estimatedRtt.dbl();
-                        std::cout << "\n EDGE CASE BEING USED" << endl;
+                        EV_DEBUG << "bottleneckAverageRtt is lower or equal to 0!\n";
                     }
                     bottleneckBandwidth = intDataEntry->getB();
                 }
@@ -263,7 +260,6 @@ double OrbtcpAIorMDFlavour::measureInflight(IntDataVec intData)
             state->txRate = intDataEntry->getTxBytes()/intDataEntry->getAverageRtt();
             totalQueueingDelay +=(double)(intDataEntry->getRxQlen())/(double)intDataEntry->getB();
             uPrime = (intDataEntry->getQLen()/(intDataEntry->getB()*intDataEntry->getAverageRtt()))+(state->txRate/intDataEntry->getB());
-           // std::cout << "\n intDataEntry->getQLen(): " << intDataEntry->getQLen() << endl;
             if(uPrime > u) {
                 u = uPrime;
                 tau = intDataEntry->getTs().dbl();
@@ -271,9 +267,8 @@ double OrbtcpAIorMDFlavour::measureInflight(IntDataVec intData)
                 bottleneckTxRate = state->txRate;
                 if(bottleneckAverageRtt <= 0){
                     bottleneckAverageRtt = estimatedRtt.dbl();
-                    std::cout << "\n EDGE CASE BEING USED" << endl;
+                    EV_DEBUG << "bottleneckAverageRtt is lower or equal to 0!\n";
                 }
-                //tau = intDataEntry->getAverageRtt();
             }
         }
     }
@@ -283,8 +278,6 @@ double OrbtcpAIorMDFlavour::measureInflight(IntDataVec intData)
     conn->emit(avgEstimatedRttSignal, bottleneckAverageRtt);
     conn->emit(txRateSignal, bottleneckTxRate);
     conn->emit(uSignal, u);
-    //tau = std::min(tau, state->T.dbl());
-    //tau = state->srtt.dbl();
     conn->emit(tauSignal, tau);
     conn->emit(sharingFlowsSignal, state->sharingFlows);
 
@@ -296,23 +289,24 @@ double OrbtcpAIorMDFlavour::measureInflight(IntDataVec intData)
         state->u = u;
     }
 
-    state->u = (1-state->alpha)*state->u+state->alpha*u; //TODO LOOK AT THIS?!
-    //state->u = (1-(tau/bottleneckAverageRtt))*state->u+(tau/bottleneckAverageRtt)*u;
+    state->u = (1-state->alpha)*state->u+state->alpha*u;
     conn->emit(alphaSignal, state->alpha);
     conn->emit(USignal, state->u);
 
-    state->ssthresh = ((bottleneckBandwidth * rtt.dbl())*0.95)/state->sharingFlows;
+    state->ssthresh = ((bottleneckBandwidth * rtt.dbl()) * state->eta)/state->sharingFlows;
     if(!state->initialPhase || state->snd_cwnd > state->ssthresh){ //slow start - more aggressive till max allowed share is reached
-        //state->additiveIncrease = ((bottleneckBandwidth * std::min(estimatedRtt.dbl(), bottleneckAverageRtt))*(state->additiveIncreasePercent))/state->sharingFlows;
-        state->additiveIncrease = ((bottleneckBandwidth * rtt.dbl())*(state->additiveIncreasePercent))/state->sharingFlows;
+        state->additiveIncrease = ((bottleneckBandwidth * rtt.dbl()) * state->additiveIncreasePercent)/state->sharingFlows;
         state->ssthresh = 0;
         state->initialPhase = false;
     }
     else{
-        //state->additiveIncrease = ((bottleneckBandwidth * std::min(estimatedRtt.dbl(), bottleneckAverageRtt) )*(state->additiveIncreasePercent));
-        state->additiveIncrease = (bottleneckBandwidth * rtt.dbl())*state->additiveIncreasePercent;
+        if(state->initialPhaseSharingFlows > 1){
+            state->additiveIncrease = ((bottleneckBandwidth * rtt.dbl()) * state->additiveIncreasePercent)/state->initialPhaseSharingFlows;
+        }
+        else{
+            state->additiveIncrease = (bottleneckBandwidth * rtt.dbl()) * state->additiveIncreasePercent;
+        }
     }
-
 
     conn->emit(bottleneckBandwidthSignal, bottleneckBandwidth);
     conn->emit(avgRttSignal, bottleneckAverageRtt);
@@ -322,11 +316,15 @@ double OrbtcpAIorMDFlavour::measureInflight(IntDataVec intData)
     return state->u;
 }
 
-uint32_t OrbtcpAIorMDFlavour::computeWnd(double u, bool updateWc)
+uint32_t OrbtcpNoReactLossFlavour::computeWnd(double u, bool updateWc)
 {
     uint32_t w;
-    if(u >= state->eta || state->incStage >= state->maxStage) {
-        w = (state->prevWnd/(u/state->eta));
+    double targetEta = state->eta;
+//    if(!state->initialPhase && state->initialPhaseSharingFlows > 0){
+//        targetEta = state->eta - state->additiveIncreasePercent;
+//    }
+    if(u >= targetEta || state->incStage >= state->maxStage) {
+        w = (state->prevWnd/(u/targetEta))+state->additiveIncrease;
         if(updateWc) {
             state->incStage = 0;
             state->prevWnd = w;
@@ -342,20 +340,14 @@ uint32_t OrbtcpAIorMDFlavour::computeWnd(double u, bool updateWc)
     return w;
 }
 
-size_t OrbtcpAIorMDFlavour::getConnId()
+size_t OrbtcpNoReactLossFlavour::getConnId()
 {
     return connId;
 }
 
-simtime_t OrbtcpAIorMDFlavour::getRtt()
+simtime_t OrbtcpNoReactLossFlavour::getRtt()
 {
-    //return state->srtt;
     return estimatedRtt;
-}
-
-unsigned int OrbtcpAIorMDFlavour::getCwnd()
-{
-    return state->snd_cwnd;
 }
 
 } // namespace tcp

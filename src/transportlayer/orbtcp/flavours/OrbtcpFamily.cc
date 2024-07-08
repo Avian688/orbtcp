@@ -39,7 +39,7 @@ OrbtcpFamily::OrbtcpFamily() : TcpTahoeRenoFamily(),
 {
 }
 
-void OrbtcpFamily::receivedDataAckInt(uint32_t firstSeqAcked, IntDataVec intData)
+void OrbtcpFamily::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
     TcpTahoeRenoFamily::receivedDataAck(firstSeqAcked);
 }
@@ -83,47 +83,11 @@ void OrbtcpFamily::receiveSeqChanged(IntDataVec intData)
     }
 }
 
-void OrbtcpFamily::receivedDuplicateAck() {
+void OrbtcpFamily::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData) {
     TcpTahoeRenoFamily::receivedDuplicateAck();
-
-    if (state->dupacks >= state->dupthresh) {
-        if (!state->lossRecovery
-                && (state->recoveryPoint == 0
-                        || seqGE(state->snd_una, state->recoveryPoint))) {
-
-            state->recoveryPoint = state->snd_max; // HighData = snd_max
-            state->lossRecovery = true;
-            EV_DETAIL << " recoveryPoint=" << state->recoveryPoint;
-            conn->emit(lossRecoverySignal, 1);
-
-            state->snd_cwnd = 3000;
-            state->initialPhase = true;
-            state->additiveIncrease = 1;
-            state->prevWnd = 10000;
-            state->ssthresh = 1215752192;
-
-            // Fast Retransmission: retransmit missing segment without waiting
-            // for the REXMIT timer to expire
-            conn->retransmitOneSegment(false);
-            conn->emit(highRxtSignal, state->highRxt);
-        }
-
-        conn->emit(cwndSignal, state->snd_cwnd);
-        conn->emit(ssthreshSignal, state->ssthresh);
-
-    }
-
-    if (state->lossRecovery) {
-        conn->setPipe();
-
-        if (((int) (state->snd_cwnd / state->snd_mss)
-                - (int) (state->pipe / (state->snd_mss - 12))) >= 1) { // Note: Typecast needed to avoid prohibited transmissions
-            conn->sendDataDuringLossRecoveryPhase(state->snd_cwnd);
-        }
-    }
 }
 
-simtime_t OrbtcpFamily::getSrtt()
+simtime_t OrbtcpFamily::getRtt()
 {
     return state->srtt;
 }
@@ -141,6 +105,13 @@ size_t OrbtcpFamily::getConnId()
 bool OrbtcpFamily::getInitialPhase()
 {
     return state->initialPhase;
+}
+
+void OrbtcpFamily::receivedOutOfOrderSegment(IntDataVec intData)
+{
+    state->ack_now = true;
+    EV_INFO << "Out-of-order segment, sending immediate ACK\n";
+    dynamic_cast<OrbtcpConnection*>(conn)->sendIntAck(intData);
 }
 
 } // namespace tcp
