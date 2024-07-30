@@ -33,6 +33,7 @@ simsignal_t IntQueue::avgRttSignal = cComponent::registerSignal("avgRttQueue");
 simsignal_t IntQueue::numberOfFlowsSignal = cComponent::registerSignal("numberOfFlows");
 simsignal_t IntQueue::persistentQueueingDelaySignal = cComponent::registerSignal("persistentQueueingDelay");
 simsignal_t IntQueue::numOfFlowsInInitialPhaseSignal = cComponent::registerSignal("numOfFlowsInInitialPhase");
+simsignal_t IntQueue::bandwidthSignal = cComponent::registerSignal("bandwidth");
 
 void IntQueue::initialize(int stage)
 {
@@ -44,11 +45,15 @@ void IntQueue::initialize(int stage)
     persistentQueueSize = 2147483647;
     avgRtt = 0;
     avgRttTimer = SimTime(10, SIMTIME_MS);
+    bandwidthRecorderTimer = SimTime(500, SIMTIME_MS);
     fixedAvgRTTVal = par("fixedAvgRTTVal");
     if (stage == INITSTAGE_TRANSPORT_LAYER) {
         averageRttTimerMsg = new cMessage("averageRttTimerMsg");
         averageRttTimerMsg->setContextPointer(this);
+        bandwidthRecorderTimerMsg = new cMessage("bandwidthRecorderTimerMsg");
+        bandwidthRecorderTimerMsg->setContextPointer(this);
         scheduleTimer();
+        scheduleBWTimer();
     }
 }
 
@@ -57,13 +62,21 @@ void IntQueue::finish()
     if (averageRttTimerMsg->isScheduled()) {
         cancelEvent(averageRttTimerMsg);
     }
+    if (bandwidthRecorderTimerMsg->isScheduled()) {
+        cancelEvent(bandwidthRecorderTimerMsg);
+    }
     delete averageRttTimerMsg;
+    delete bandwidthRecorderTimerMsg;
+
 }
 
 void IntQueue::handleMessage(cMessage *message)
 {
     if (message == averageRttTimerMsg) {
         processTimer();
+    }
+    else if (message == bandwidthRecorderTimerMsg) {
+        processBWTimer();
     }
     else{
         auto packet = check_and_cast<Packet *>(message);
@@ -108,6 +121,21 @@ void IntQueue::processTimer()
     }
 }
 
+void IntQueue::processBWTimer()
+{
+    if(isActive){
+        if(!dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()){
+            EV_DEBUG << "\n Channel has been deactivated!" << endl;
+            isActive = false;
+            return;
+        }
+        else{
+            cSimpleModule::emit(bandwidthSignal, dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate());
+        }
+        scheduleBWTimer();
+    }
+}
+
 void IntQueue::scheduleTimer()
 {
     if(!averageRttTimerMsg->isScheduled()){
@@ -115,6 +143,13 @@ void IntQueue::scheduleTimer()
             avgRttTimer = avgRtt;
         }
         scheduleAt(simTime()+avgRttTimer, averageRttTimerMsg);
+    }
+}
+
+void IntQueue::scheduleBWTimer()
+{
+    if(!bandwidthRecorderTimerMsg->isScheduled()){
+        scheduleAt(simTime()+bandwidthRecorderTimer, bandwidthRecorderTimerMsg);
     }
 }
 

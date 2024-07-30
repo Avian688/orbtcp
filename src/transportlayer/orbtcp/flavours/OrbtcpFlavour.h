@@ -50,6 +50,9 @@ class OrbtcpFlavour : public OrbtcpFamily
     static simsignal_t alphaSignal;
     static simsignal_t measuringInflightSignal;
     static simsignal_t testRttSignal;
+    static simsignal_t recoveryPointSignal;
+    static simsignal_t sndUnaSignal;
+    static simsignal_t sndMaxSignal;
 
     size_t connId;
     simtime_t rtt;

@@ -41,7 +41,6 @@ private:
     long oldLastBytesReceived;
 
     double thrMeasurementInterval;
-    long thrMeasurementBandwidth;
 
 protected:
     virtual void initialize(int stage) override;

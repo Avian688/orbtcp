@@ -37,7 +37,13 @@ simple OrbtcpConnection extends TcpConnection
         @signal[alpha];
         @signal[measuringInflight];
         @signal[testRtt];
+        @signal[recoveryPoint];	
+        @signal[sndUna];
+        @signal[sndMax];
         
+        @statistic[sndMax](record=vector; interpolationmode=sample-hold);  
+		@statistic[sndUna](record=vector; interpolationmode=sample-hold);  
+		@statistic[recoveryPoint](record=vector; interpolationmode=sample-hold); 
         @statistic[txRate](record=vector; interpolationmode=sample-hold);
         @statistic[tau](record=vector; interpolationmode=sample-hold);
         @statistic[u](record=vector; interpolationmode=sample-hold);

@@ -24,7 +24,6 @@ simple TcpThroughputSinkAppThread extends TcpSinkAppThread
     parameters:
     @class(TcpThroughputSinkAppThread);
     double thrMeasurementInterval @unit(s);
-    volatile int thrMeasurementBandwidth;
     
     @signal[ReceiverSideThroughput];
     @statistic[ReceiverSideThroughput](source=ReceiverSideThroughput;unit=bps; record=vector);

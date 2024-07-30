@@ -25,7 +25,6 @@ void TcpThroughputSinkAppThread::initialize(int stage) {
         throughputTimer = new cMessage("THROUGHPUTTIMER");
 
         thrMeasurementInterval = par("thrMeasurementInterval");
-        thrMeasurementBandwidth = par("thrMeasurementBandwidth");
 
         lastBytesReceived = 0;
         oldLastBytesReceived = 0;

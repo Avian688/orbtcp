@@ -42,7 +42,7 @@ void OrbtcpConnection::initConnection(TcpOpenCommand *openCmd)
     TcpConnection::initConnection(openCmd);
 
     paceMsg = new cMessage("pacing message");
-    intersendingTime = 0.005;
+    intersendingTime = 0.000001;
     paceValueVec.setName("paceValue");
     bufferedPacketsVec.setName("bufferedPackets");
     pace = true;
@@ -63,7 +63,7 @@ TcpConnection *OrbtcpConnection::cloneListeningConnection()
 void OrbtcpConnection::initClonedConnection(TcpConnection *listenerConn)
 {
     paceMsg = new cMessage("pacing message");
-    intersendingTime = 0.005;
+    intersendingTime = 0.000001;
     paceValueVec.setName("paceValue");
     bufferedPacketsVec.setName("bufferedPackets");
     pace = false;
@@ -234,8 +234,17 @@ TcpEventCode OrbtcpConnection::processSegment1stThru8th(Packet *tcpSegment, cons
             // SACK option."
             //
             // The received segment is not "valid" therefore the ACK will not bear a SACK option, if snd_dsack (D-SACK) is not set.
-            std::cout << "\n tcpSegment info: " << tcpSegment->str() << endl;
-            sendAck();
+//            if(simTime().dbl() > 16){
+//                std::cout << "\n RECEIVED SEGMENT AT RECEIVER (DUPE ACK TO BE SENT). SEQ NO: " << tcpHeader->getSequenceNo() << endl;
+//            }
+
+            if(tcpHeader->findTag<IntTag>()){
+                IntDataVec intData = tcpHeader->getTag<IntTag>()->getIntData();
+                sendIntAck(intData);
+            }
+            else{
+                sendAck();
+            }
         }
 
         state->rcv_naseg++;
@@ -471,7 +480,17 @@ TcpEventCode OrbtcpConnection::processSegment1stThru8th(Packet *tcpSegment, cons
         //"
         // And we are staying in the TIME_WAIT state.
         //
-        sendAck();
+        if(simTime().dbl() > 16){
+            std::cout << "\n RECEIVED SEGMENT AT RECEIVER (TCP_S_TIME_WAIT?). SEQ NO: " << tcpHeader->getSequenceNo() << endl;
+        }
+
+        if(tcpHeader->findTag<IntTag>()){
+            IntDataVec intData = tcpHeader->getTag<IntTag>()->getIntData();
+            sendIntAck(intData);
+        }
+        else{
+            sendAck();
+        }
         rescheduleAfter(2 * tcpMain->getMsl(), the2MSLTimer);
     }
 
@@ -584,7 +603,9 @@ TcpEventCode OrbtcpConnection::processSegment1stThru8th(Packet *tcpSegment, cons
                             EV_DETAIL << "SND_SACK SET (old_rcv_nxt == rcv_nxt oooseg rcvd)\n";
                         }
                     }
-
+//                    if(simTime().dbl() > 15.27){
+//                        std::cout << "\n RECEIVED OUT OF ORDER SEGMENT AT RECEIVER. SEQ NO: " << tcpHeader->getSequenceNo() << endl;
+//                    }
                     if(tcpHeader->findTag<IntTag>()){
                         IntDataVec intDataNew = tcpHeader->getTag<IntTag>()->getIntData();
                         dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->receivedOutOfOrderSegment(tcpHeader->getTag<IntTag>()->getIntData());
@@ -754,6 +775,9 @@ TcpEventCode OrbtcpConnection::processSegment1stThru8th(Packet *tcpSegment, cons
         //intTag->
         //int intDataArraySize = intTag->getIntDataArraySize();
         //for (int i = 0; i < intDataArraySize; i++) {
+//        if(simTime().dbl() > 16){
+//            std::cout << "\n RECEIVED SEGMENT AT RECEIVER. SEQ NO: " << tcpHeader->getSequenceNo() << endl;
+//        }
         dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->receiveSeqChanged(intTag->getIntData());
         //}
     }
@@ -836,7 +860,12 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
         // are ignored anyway if neither seqNo nor ackNo has changed.
         //
         if (state->snd_una == tcpHeader->getAckNo() && payloadLength == 0 && state->snd_una != state->snd_max) {
-            state->dupacks++;
+            state->dupacks = state->dupacks + 1;
+
+//            if(this->getId() == 203 && simTime().dbl() > 16){
+//                std::cout << "\n DUP ACK RECEIVED WITH ACK NO: " << tcpHeader->getAckNo() << endl;
+//                std::cout << "\n CURRENT SND_UNA: " << state->snd_una << endl;
+//            }
 
             emit(dupAcksSignal, state->dupacks);
 
@@ -854,6 +883,12 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
         }
         else {
             // if doesn't qualify as duplicate ACK, just ignore it.
+            if(this->getId() == 203 && simTime().dbl() > 16){
+
+                std::cout << "\n DOESNT QUALIFY! " << endl;
+                std::cout << "\n ACKNO " << tcpHeader->getAckNo() << endl;
+                std::cout << "\n SND_UNA " << state->snd_una << endl;
+            }
             if (payloadLength == 0) {
                 if (state->snd_una != tcpHeader->getAckNo())
                     EV_DETAIL << "Old ACK: ackNo < snd_una\n";
@@ -922,11 +957,10 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
                 dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->receivedDataAck(old_snd_una, tcpHeader->getTag<IntTag>()->getIntData());
             }
             else{ //D-SACK
-
+                tcpAlgorithm->receivedDataAck(old_snd_una);
             }
             // in the receivedDataAck we need the old value
             state->dupacks = 0;
-
             emit(dupAcksSignal, state->dupacks);
         }
     }
@@ -1105,8 +1139,9 @@ uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
 
     ASSERT(options_len < state->snd_mss);
 
-    if (bytes + options_len > state->snd_mss)
-        bytes = state->snd_mss - options_len;
+    //if (bytes + options_len > state->snd_mss)
+    //    bytes = state->snd_mss - options_len;
+    bytes = state->snd_mss;
 
     uint32_t sentBytes = bytes;
 
@@ -1158,6 +1193,9 @@ uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
 
     ASSERT(tcpHeader->getHeaderLength() == tmpTcpHeader->getHeaderLength());
 
+    //if(this->getId() == 203 && simTime().dbl() > 16){
+    //    std::cout << "\n SENDING PACKET WITH SEQ NO: " << state->snd_nxt << endl;
+    //}
     // send it
     sendToIP(tcpSegment, tcpHeader);
 
@@ -1349,7 +1387,7 @@ void OrbtcpConnection::setPipe() {
                 state->pipe += length;
         }
     }
-    state->pipe = state->pipe - (packetQueue.size()*state->snd_mss);
+    //state->pipe = state->pipe - (packetQueue.size()*state->snd_mss);
 
     emit(pipeSignal, state->pipe);
 }

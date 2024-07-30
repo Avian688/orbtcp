@@ -28,6 +28,10 @@ protected:
     static simsignal_t numberOfFlowsSignal;
     static simsignal_t persistentQueueingDelaySignal;
     static simsignal_t numOfFlowsInInitialPhaseSignal;
+    static simsignal_t bandwidthSignal;
+
+    simtime_t bandwidthRecorderTimer;
+    cMessage *bandwidthRecorderTimerMsg = nullptr;
 
     bool isActive;
     long txBytes;
@@ -49,7 +53,9 @@ protected:
     virtual void initialize(int stage) override;
     virtual void handleMessage(cMessage *message) override;
     virtual void processTimer();
+    virtual void processBWTimer();
     virtual void scheduleTimer();
+    virtual void scheduleBWTimer();
 
     virtual void finish() override;
 public:

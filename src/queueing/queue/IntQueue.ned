@@ -33,7 +33,10 @@ simple IntQueue extends PacketQueue
         
         @signal[persistentQueueingDelay];
         @statistic[persistentQueueingDelay](record=vector; interpolationmode=sample-hold);
-        
+    	
+    	@signal[bandwidth];
+   		@statistic[bandwidth](record=vector; interpolationmode=sample-hold);
+    
         packetCapacity = default(100);
         double fixedAvgRTTVal = default(0);
         dropperClass = default("inet::queueing::PacketAtCollectionEndDropper");
