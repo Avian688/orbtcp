@@ -15,9 +15,9 @@
 
 package orbtcp.transportlayer.orbtcp;
 
-import inet.transportlayer.tcp.Tcp;
+import tcppaced.transportlayer.tcp.TcpPaced;
 
-simple Orbtcp extends Tcp
+simple Orbtcp extends TcpPaced
 {
     parameters:
         @class("inet::tcp::Orbtcp");

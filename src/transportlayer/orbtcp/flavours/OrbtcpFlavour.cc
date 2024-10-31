@@ -96,6 +96,10 @@ void OrbtcpFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAcked)
     const double g = 0.125; // 1 / 8; (1 - alpha) where alpha == 7 / 8;
     simtime_t newRTT = tAcked - tSent;
 
+    if(state->srtt == 1){
+        state->srtt = newRTT;
+    }
+
     simtime_t& srtt = state->srtt;
     simtime_t& rttvar = state->rttvar;
 
@@ -153,7 +157,7 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
         conn->emit(cwndSignal, state->snd_cwnd);
     }
     if(state->snd_cwnd > 0){
-        double pace = estimatedRtt.dbl()/((double) state->snd_cwnd/(double)state->snd_mss);
+        double pace = state->srtt.dbl()/((double) (state->snd_cwnd*1.2)/(double)state->snd_mss);
         dynamic_cast<OrbtcpConnection*>(conn)->changeIntersendingTime(pace);
     }
     state->L = intData;
@@ -172,9 +176,7 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 
             if (seqGE(state->snd_una, state->recoveryPoint)) {
                 EV_INFO << "Loss Recovery terminated.\n";
-                //std::cout << "\n LOSS RECOVERY HAS ENDED AT SIMTIME: " << simTime().dbl() << endl;
                 state->lossRecovery = false;
-                conn->emit(lossRecoverySignal, 0);
             }
             // RFC 3517, page 7: "(B) Upon receipt of an ACK that does not cover RecoveryPoint the
             // following actions MUST be taken:
@@ -186,24 +188,9 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
             else {
                 // update of scoreboard (B.1) has already be done in readHeaderOptions()
                 conn->setPipe();
-                // RFC 3517, page 7: "(C) If cwnd - pipe >= 1 SMSS the sender SHOULD transmit one or more
-                // segments as follows:"
-                if (((int)state->snd_cwnd - (int)state->pipe) >= (int)state->snd_mss) // Note: Typecast needed to avoid prohibited transmissions
-                    conn->sendDataDuringLossRecoveryPhase(state->snd_cwnd);
             }
             conn->emit(recoveryPointSignal, state->recoveryPoint);
         }
-        // RFC 3517, pages 7 and 8: "5.1 Retransmission Timeouts
-        // (...)
-        // If there are segments missing from the receiver's buffer following
-        // processing of the retransmitted segment, the corresponding ACK will
-        // contain SACK information.  In this case, a TCP sender SHOULD use this
-        // SACK information when determining what data should be sent in each
-        // segment of the slow start.  The exact algorithm for this selection is
-        // not specified in this document (specifically NextSeg () is
-        // inappropriate during slow start after an RTO).  A relatively
-        // straightforward approach to "filling in" the sequence space reported
-        // as missing should be a reasonable approach."
         sendData(false);
         conn->emit(sndUnaSignal, state->snd_una);
         conn->emit(sndMaxSignal, state->snd_max);
@@ -212,23 +199,6 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
     TcpTahoeRenoFamily::receivedDuplicateAck();
-    if(firstSeqAcked > state->lastUpdateSeq) {
-        //std::cout << "\n UPDATING CWND GIVEN DUP ACK" << endl;
-        double uVal = measureInflight(intData);
-        if(uVal > 0){
-            state->snd_cwnd = computeWnd(uVal, true);
-        }
-        conn->emit(cwndSignal, state->snd_cwnd);
-        state->lastUpdateSeq = state->snd_nxt;
-    }
-    else {
-        double uVal = measureInflight(intData);
-        if(uVal > 0){
-            state->snd_cwnd = computeWnd(uVal, false);
-        }
-        conn->emit(cwndSignal, state->snd_cwnd);
-    }
-    state->L = intData;
 
     if (state->dupacks == state->dupthresh) {
         EV_INFO << "Reno on dupAcks == DUPTHRESH(=" << state->dupthresh << ": perform Fast Retransmit, and enter Fast Recovery:";
@@ -258,7 +228,6 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
                 state->recoveryPoint = state->snd_max; // HighData = snd_max
                 //std::cout << "\n Entering Loss recovery - dup acks > dupthresh at simTime: " << simTime().dbl() << endl;
                 state->lossRecovery = true;
-                conn->emit(lossRecoverySignal, state->snd_cwnd);
                 EV_DETAIL << " recoveryPoint=" << state->recoveryPoint;
             }
         }
@@ -280,8 +249,8 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
 
         // Fast Retransmission: retransmit missing segment without waiting
         // for the REXMIT timer to expire
-        conn->retransmitOneSegment(false);
-
+        dynamic_cast<OrbtcpConnection*>(conn)->retransmitNext(false);
+        sendData(false);
         // Do not restart REXMIT timer.
         // Note: Restart of REXMIT timer on retransmission is not part of RFC 2581, however optional in RFC 3517 if sent during recovery.
         // Resetting the REXMIT timer is discussed in RFC 2582/3782 (NewReno) and RFC 2988.
@@ -310,16 +279,9 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
                 // Note: Restart of REXMIT timer on retransmission is not part of RFC 2581, however optional in RFC 3517 if sent during recovery.
                 EV_INFO << "Retransmission sent during recovery, restarting REXMIT timer.\n";
                 restartRexmitTimer();
-
-                // RFC 3517, page 7: "(C) If cwnd - pipe >= 1 SMSS the sender SHOULD transmit one or more
-                // segments as follows:"
-                if (((int)state->snd_cwnd - (int)state->pipe) >= (int)state->snd_mss) // Note: Typecast needed to avoid prohibited transmissions
-                    conn->sendDataDuringLossRecoveryPhase(state->snd_cwnd);
             }
         }
 
-        // try to transmit new segments (RFC 2581)
-        sendData(false);
     }
     else if (state->dupacks > state->dupthresh) {
         //
@@ -328,7 +290,7 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
         // additional segment that has left the network
         //
         //state->snd_cwnd += state->snd_mss;
-        state->snd_cwnd += state->dupacks * state->snd_mss;
+        //state->snd_cwnd += state->dupacks * state->snd_mss;
         EV_DETAIL << "Reno on dupAcks > DUPTHRESH(=" << state->dupthresh << ": Fast Recovery: inflating cwnd by SMSS, new cwnd=" << state->snd_cwnd << "\n";
 
         conn->emit(cwndSignal, state->snd_cwnd);
@@ -347,13 +309,32 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
         // inappropriate during slow start after an RTO).  A relatively
         // straightforward approach to "filling in" the sequence space reported
         // as missing should be a reasonable approach."
-        sendData(false);
     }
 
+    if(firstSeqAcked > state->lastUpdateSeq) {
+        //std::cout << "\n UPDATING CWND GIVEN DUP ACK" << endl;
+        double uVal = measureInflight(intData);
+        if(uVal > 0){
+            state->snd_cwnd = computeWnd(uVal, true);
+        }
+        conn->emit(cwndSignal, state->snd_cwnd);
+        state->lastUpdateSeq = state->snd_nxt;
+    }
+    else {
+        double uVal = measureInflight(intData);
+        if(uVal > 0){
+            state->snd_cwnd = computeWnd(uVal, false);
+        }
+        conn->emit(cwndSignal, state->snd_cwnd);
+    }
+    state->L = intData;
+
     if(state->snd_cwnd > 0){
-        double pace = estimatedRtt.dbl()/((double) state->snd_cwnd/(double)state->snd_mss);
+        double pace = state->srtt.dbl()/((double) (state->snd_cwnd*1.2)/(double)state->snd_mss);
         dynamic_cast<OrbtcpConnection*>(conn)->changeIntersendingTime(pace);
     }
+
+    sendData(false);
 }
 
 //void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData) {
@@ -604,8 +585,10 @@ void OrbtcpFlavour::processRexmitTimer(TcpEventCode &event) {
                    << ", ssthresh=" << state->ssthresh << "\n";
 
     state->afterRto = true;
+    dynamic_cast<OrbtcpConnection*>(conn)->cancelPaceTimer();
 
-    conn->retransmitOneSegment(true);
+    dynamic_cast<OrbtcpConnection*>(conn)->retransmitNext(true);
+    sendData(false);
 }
 
 } // namespace tcp

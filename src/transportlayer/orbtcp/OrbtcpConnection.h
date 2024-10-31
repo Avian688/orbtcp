@@ -18,7 +18,6 @@
 
 #include <queue>
 #include <inet/common/INETUtils.h>
-#include <inet/transportlayer/tcp/TcpConnection.h>
 #include <inet/networklayer/common/EcnTag_m.h>
 #include <inet/transportlayer/common/L4Tools.h>
 #include <inet/networklayer/common/DscpTag_m.h>
@@ -27,9 +26,11 @@
 #include <inet/networklayer/common/L3AddressTag_m.h>
 #include <inet/networklayer/contract/IL3AddressType.h>
 #include "../../common/IntTag_m.h"
+#include "../../../../tcpPaced/src/transportlayer/tcp/TcpPacedConnection.h"
+
 namespace inet {
 namespace tcp {
-class OrbtcpConnection : public TcpConnection {
+class OrbtcpConnection : public TcpPacedConnection {
 public:
     OrbtcpConnection();
     virtual ~OrbtcpConnection();
@@ -43,15 +44,8 @@ protected:
     virtual void process_SEND(TcpEventCode& event, TcpCommand *tcpCommand, cMessage *msg) override;
     virtual TcpConnection *cloneListeningConnection() override;
 public:
-    virtual bool processTimer(cMessage *msg) override;
     virtual uint32_t sendSegment(uint32_t bytes) override;
-    virtual void sendToIP(Packet *packet, const Ptr<TcpHeader> &tcpseg) override;
-    virtual void changeIntersendingTime(simtime_t _intersendingTime);
     virtual void setPipe() override;
-private:
-    virtual void processPaceTimer();
-    void addPacket(Packet *packet);
-    virtual Packet* addIntTags(Packet* packet);
 public:
     virtual void sendIntAck(IntDataVec intData);
 protected:

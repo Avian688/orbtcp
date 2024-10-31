@@ -33,19 +33,11 @@ OrbtcpConnection::OrbtcpConnection() {
 
 OrbtcpConnection::~OrbtcpConnection() {
     // TODO Auto-generated destructor stub
-    cancelEvent(paceMsg);
-    delete paceMsg;
 }
 
 void OrbtcpConnection::initConnection(TcpOpenCommand *openCmd)
 {
-    TcpConnection::initConnection(openCmd);
-
-    paceMsg = new cMessage("pacing message");
-    intersendingTime = 0.000001;
-    paceValueVec.setName("paceValue");
-    bufferedPacketsVec.setName("bufferedPackets");
-    pace = true;
+    TcpPacedConnection::initConnection(openCmd);
 }
 
 TcpConnection *OrbtcpConnection::cloneListeningConnection()
@@ -62,12 +54,7 @@ TcpConnection *OrbtcpConnection::cloneListeningConnection()
 
 void OrbtcpConnection::initClonedConnection(TcpConnection *listenerConn)
 {
-    paceMsg = new cMessage("pacing message");
-    intersendingTime = 0.000001;
-    paceValueVec.setName("paceValue");
-    bufferedPacketsVec.setName("bufferedPackets");
-    pace = false;
-    TcpConnection::initClonedConnection(listenerConn);
+    TcpPacedConnection::initClonedConnection(listenerConn);
 
 }
 
@@ -480,9 +467,6 @@ TcpEventCode OrbtcpConnection::processSegment1stThru8th(Packet *tcpSegment, cons
         //"
         // And we are staying in the TIME_WAIT state.
         //
-        if(simTime().dbl() > 16){
-            std::cout << "\n RECEIVED SEGMENT AT RECEIVER (TCP_S_TIME_WAIT?). SEQ NO: " << tcpHeader->getSequenceNo() << endl;
-        }
 
         if(tcpHeader->findTag<IntTag>()){
             IntDataVec intData = tcpHeader->getTag<IntTag>()->getIntData();
@@ -882,13 +866,6 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             }
         }
         else {
-            // if doesn't qualify as duplicate ACK, just ignore it.
-            if(this->getId() == 203 && simTime().dbl() > 16){
-
-                std::cout << "\n DOESNT QUALIFY! " << endl;
-                std::cout << "\n ACKNO " << tcpHeader->getAckNo() << endl;
-                std::cout << "\n SND_UNA " << state->snd_una << endl;
-            }
             if (payloadLength == 0) {
                 if (state->snd_una != tcpHeader->getAckNo())
                     EV_DETAIL << "Old ACK: ackNo < snd_una\n";
@@ -975,7 +952,7 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
 
         return false; // means "drop"
     }
-
+    sendPendingData();
     return true;
 }
 
@@ -1033,80 +1010,6 @@ void OrbtcpConnection::sendIntAck(IntDataVec intData)
 
     // notify
     tcpAlgorithm->ackSent();
-}
-
-bool OrbtcpConnection::processTimer(cMessage *msg)
-{
-    printConnBrief();
-    EV_DETAIL << msg->getName() << " timer expired\n";
-
-    // first do actions
-    TcpEventCode event;
-
-    if (msg == paceMsg) {
-        processPaceTimer();
-    }
-    else if (msg == the2MSLTimer) {
-        event = TCP_E_TIMEOUT_2MSL;
-        process_TIMEOUT_2MSL();
-    }
-    else if (msg == connEstabTimer) {
-        event = TCP_E_TIMEOUT_CONN_ESTAB;
-        process_TIMEOUT_CONN_ESTAB();
-    }
-    else if (msg == finWait2Timer) {
-        event = TCP_E_TIMEOUT_FIN_WAIT_2;
-        process_TIMEOUT_FIN_WAIT_2();
-    }
-    else if (msg == synRexmitTimer) {
-        event = TCP_E_IGNORE;
-        process_TIMEOUT_SYN_REXMIT(event);
-    }
-    else {
-        event = TCP_E_IGNORE;
-        tcpAlgorithm->processTimer(msg, event);
-    }
-
-    // then state transitions
-    return performStateTransition(event);
-}
-
-void OrbtcpConnection::addPacket(Packet *packet)
-{
-    Enter_Method("addPacket");
-    if (packetQueue.empty()) {
-        if (intersendingTime != 0){
-            paceStart = simTime();
-            scheduleAt(simTime() + intersendingTime, paceMsg);
-        }
-        else {
-            paceStart = simTime();
-            scheduleAt(simTime() + 0.05, paceMsg);
-        }
-    }
-
-    packetQueue.push(packet);
-}
-
-void OrbtcpConnection::processPaceTimer()
-{
-    Packet* packet = addIntTags(packetQueue.front());
-    tcpMain->sendFromConn(packet, "ipOut");
-
-    packetQueue.pop();
-    bufferedPacketsVec.record(packetQueue.size());
-
-    if (!packetQueue.empty()) {
-        if (intersendingTime != 0){
-            paceStart = simTime();
-            scheduleAt(simTime() + intersendingTime, paceMsg);
-        }
-        else {
-            paceStart = simTime();
-            scheduleAt(simTime() + 0.0001, paceMsg);
-        }
-            //throw cRuntimeError("Pace is not set.");
-    }
 }
 
 uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
@@ -1193,10 +1096,11 @@ uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
 
     ASSERT(tcpHeader->getHeaderLength() == tmpTcpHeader->getHeaderLength());
 
-    //if(this->getId() == 203 && simTime().dbl() > 16){
-    //    std::cout << "\n SENDING PACKET WITH SEQ NO: " << state->snd_nxt << endl;
-    //}
-    // send it
+    tcpHeader->addTagIfAbsent<IntTag>()->setConnId((unsigned long)dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getConnId());
+    tcpHeader->addTagIfAbsent<IntTag>()->setRtt(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getRtt());
+    tcpHeader->addTagIfAbsent<IntTag>()->setCwnd(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getCwnd());
+    tcpHeader->addTagIfAbsent<IntTag>()->setInitialPhase(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getInitialPhase());
+
     sendToIP(tcpSegment, tcpHeader);
 
     // let application fill queue again, if there is space
@@ -1215,113 +1119,6 @@ uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
         state->snd_max = state->snd_nxt;
 
     return sentBytes;
-}
-
-void OrbtcpConnection::sendToIP(Packet *tcpSegment, const Ptr<TcpHeader> &tcpHeader)
-{
-    // record seq (only if we do send data) and ackno
-    if (tcpSegment->getByteLength() > B(tcpHeader->getChunkLength()).get())
-        emit(sndNxtSignal, tcpHeader->getSequenceNo());
-
-    emit(sndAckSignal, tcpHeader->getAckNo());
-
-    // final touches on the segment before sending
-   tcpHeader->setSrcPort(localPort);
-   tcpHeader->setDestPort(remotePort);
-   ASSERT(tcpHeader->getHeaderLength() >= TCP_MIN_HEADER_LENGTH);
-   ASSERT(tcpHeader->getHeaderLength() <= TCP_MAX_HEADER_LENGTH);
-   ASSERT(tcpHeader->getChunkLength() == tcpHeader->getHeaderLength());
-
-    EV_INFO << "Sending: ";
-    printSegmentBrief(tcpSegment, tcpHeader);
-
-    // TBD reuse next function for sending
-
-    IL3AddressType *addressType = remoteAddr.getAddressType();
-    tcpSegment->addTagIfAbsent<DispatchProtocolReq>()->setProtocol(addressType->getNetworkProtocol());
-
-    if (ttl != -1 && tcpSegment->findTag<HopLimitReq>() == nullptr)
-        tcpSegment->addTag<HopLimitReq>()->setHopLimit(ttl);
-
-    if (dscp != -1 && tcpSegment->findTag<DscpReq>() == nullptr)
-        tcpSegment->addTag<DscpReq>()->setDifferentiatedServicesCodePoint(dscp);
-
-    if (tos != -1 && tcpSegment->findTag<TosReq>() == nullptr)
-        tcpSegment->addTag<TosReq>()->setTos(tos);
-
-    auto addresses = tcpSegment->addTagIfAbsent<L3AddressReq>();
-    addresses->setSrcAddress(localAddr);
-    addresses->setDestAddress(remoteAddr);
-
-    // ECN:
-    // We decided to use ECT(1) to indicate ECN capable transport.
-    //
-    // rfc-3168, page 6:
-    // Routers treat the ECT(0) and ECT(1) codepoints
-    // as equivalent.  Senders are free to use either the ECT(0) or the
-    // ECT(1) codepoint to indicate ECT.
-    //
-    // rfc-3168, page 20:
-    // For the current generation of TCP congestion control algorithms, pure
-    // acknowledgement packets (e.g., packets that do not contain any
-    // accompanying data) MUST be sent with the not-ECT codepoint.
-    //
-    // rfc-3168, page 20:
-    // ECN-capable TCP implementations MUST NOT set either ECT codepoint
-    // (ECT(0) or ECT(1)) in the IP header for retransmitted data packets
-    tcpSegment->addTagIfAbsent<EcnReq>()->setExplicitCongestionNotification((state->ect && !state->sndAck && !state->rexmit) ? IP_ECN_ECT_1 : IP_ECN_NOT_ECT);
-
-    tcpSegment->addTagIfAbsent<EcnReq>()->setExplicitCongestionNotification((state->ect && !state->sndAck && !state->rexmit) ? IP_ECN_ECT_1 : IP_ECN_NOT_ECT);
-
-    tcpHeader->setCrc(0);
-    tcpHeader->setCrcMode(tcpMain->crcMode);
-
-    insertTransportProtocolHeader(tcpSegment, Protocol::tcp, tcpHeader);
-
-    if(pace){
-        addPacket(tcpSegment);
-        bufferedPacketsVec.record(packetQueue.size());
-    }
-    else{
-        tcpMain->sendFromConn(tcpSegment, "ipOut");
-    }
-}
-
-void OrbtcpConnection::changeIntersendingTime(simtime_t _intersendingTime)
-{
-    ASSERT(_intersendingTime > 0);
-    intersendingTime = _intersendingTime;
-    EV_TRACE << "New pace: " << intersendingTime << "s" << std::endl;
-    //std::cout << "New pace: " << intersendingTime << "s" << std::endl;
-    paceValueVec.record(intersendingTime);
-    if (paceMsg->isScheduled()) {
-        simtime_t newArrivalTime = paceStart + intersendingTime;
-        if (newArrivalTime < simTime()) {
-            paceStart = simTime();
-            rescheduleAt(simTime(), paceMsg);
-        }
-        else {
-            paceStart = simTime();
-            rescheduleAt(newArrivalTime, paceMsg);
-        }
-    }
-
-}
-
-Packet* OrbtcpConnection::addIntTags(Packet* packet) {
-    inet::Ptr<TcpHeader> tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
-
-    if(packet->getDataLength() > b(0)) { //Data Packet
-        tcpHeader->addTagIfAbsent<IntTag>()->setConnId((unsigned long)dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getConnId());
-        tcpHeader->addTagIfAbsent<IntTag>()->setRtt(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getRtt());
-        tcpHeader->addTagIfAbsent<IntTag>()->setCwnd(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getCwnd());
-        tcpHeader->addTagIfAbsent<IntTag>()->setInitialPhase(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getInitialPhase());
-    }
-    //std::cout << "\n PROTOCOL: " << packet->getTag<PacketProtocolTag>()->getProtocol()->str() << endl;
-    packet->insertAtFront(tcpHeader);
-
-    //std::cout << "\n TIME WHEN PACKET SENT: " << simTime() << endl;
-    return packet;
 }
 
 void OrbtcpConnection::setPipe() {

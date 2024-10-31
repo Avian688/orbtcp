@@ -15,9 +15,9 @@
 
 package orbtcp.transportlayer.orbtcp;
 
-import inet.transportlayer.tcp.TcpConnection;
+import tcppaced.transportlayer.tcp.TcpPacedConnection;
 
-simple OrbtcpConnection extends TcpConnection
+simple OrbtcpConnection extends TcpPacedConnection
 {
     parameters:
         @class("inet::tcp::OrbtcpConnection"); 
@@ -26,7 +26,6 @@ simple OrbtcpConnection extends TcpConnection
         @signal[tau];
         @signal[u];
         @signal[U];
-        @signal[additiveIncrease];
         @signal[sharingFlows];
         @signal[initialPhaseSharingFlows];
         @signal[bottleneckBandwidth];
@@ -48,7 +47,6 @@ simple OrbtcpConnection extends TcpConnection
         @statistic[tau](record=vector; interpolationmode=sample-hold);
         @statistic[u](record=vector; interpolationmode=sample-hold);
         @statistic[U](record=vector; interpolationmode=sample-hold);
-        @statistic[additiveIncrease](record=vector; interpolationmode=sample-hold);
 		@statistic[sharingFlows](record=vector; interpolationmode=sample-hold);
 		@statistic[initialPhaseSharingFlows](record=vector; interpolationmode=sample-hold);
 		@statistic[bottleneckBandwidth](record=vector; interpolationmode=sample-hold);

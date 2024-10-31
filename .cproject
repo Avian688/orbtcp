@@ -42,7 +42,7 @@
 					</folderInfo>
 					<sourceEntries>
 						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="simulations"/>
-						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="src"/>
+						<entry excluding="transportlayer/orbtcp/flavours/OrbtcpTauUFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpRttFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpNumFlowsInitialPhaseFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpNoSSFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpNoSSAvgRttAIFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpNoReactLossFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpIPCutOffFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpHalfMDFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpEstRttAIFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpConservativeFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpAvgRttFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpAIorMDFlavour.cc|transportlayer/orbtcp/flavours/Orbtcp52Split93UIPValFlavour.cc|transportlayer/orbtcp/flavours/Orbtcp52Split93UFlavour.cc|transportlayer/orbtcp/flavours/Orbtcp23SplitIPValFlavour.cc|transportlayer/orbtcp/flavours/Orbtcp23SplitFlavour.cc|transportlayer/orbtcp/flavours/HpccFlavour.cc" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="src"/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>
@@ -89,7 +89,7 @@
 					</folderInfo>
 					<sourceEntries>
 						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="simulations"/>
-						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="src"/>
+						<entry excluding="transportlayer/orbtcp/flavours/OrbtcpTauUFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpRttFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpNumFlowsInitialPhaseFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpNoSSFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpNoSSAvgRttAIFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpNoReactLossFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpIPCutOffFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpHalfMDFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpEstRttAIFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpConservativeFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpAvgRttFlavour.cc|transportlayer/orbtcp/flavours/OrbtcpAIorMDFlavour.cc|transportlayer/orbtcp/flavours/Orbtcp52Split93UIPValFlavour.cc|transportlayer/orbtcp/flavours/Orbtcp52Split93UFlavour.cc|transportlayer/orbtcp/flavours/Orbtcp23SplitIPValFlavour.cc|transportlayer/orbtcp/flavours/Orbtcp23SplitFlavour.cc|transportlayer/orbtcp/flavours/HpccFlavour.cc" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="src"/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>

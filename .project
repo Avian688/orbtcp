@@ -3,7 +3,8 @@
 	<name>orbtcp</name>
 	<comment></comment>
 	<projects>
-		<project>inet4.4</project>
+		<project>inet4.5</project>
+		<project>tcpPaced</project>
 	</projects>
 	<buildSpec>
 		<buildCommand>

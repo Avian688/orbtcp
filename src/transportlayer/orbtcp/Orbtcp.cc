@@ -15,8 +15,6 @@
 
 #include "Orbtcp.h"
 
-#include "../orbtcp/OrbtcpSendQueue.h"
-
 namespace inet {
 namespace tcp {
 
@@ -39,11 +37,6 @@ TcpConnection* Orbtcp::createConnection(int socketId)
     auto module = check_and_cast<TcpConnection*>(moduleType->createScheduleInit(submoduleName, this));
     module->initConnection(this, socketId);
     return module;
-}
-
-TcpSendQueue *Orbtcp::createSendQueue()
-{
-    return new OrbtcpSendQueue();
 }
 
 }

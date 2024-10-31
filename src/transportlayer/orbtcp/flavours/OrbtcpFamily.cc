@@ -34,14 +34,14 @@ std::string OrbtcpFamilyStateVariables::detailedInfo() const
 
 // ---
 
-OrbtcpFamily::OrbtcpFamily() : TcpTahoeRenoFamily(),
-    state((OrbtcpFamilyStateVariables *&)TcpTahoeRenoFamily::state)
+OrbtcpFamily::OrbtcpFamily() : TcpPacedFamily(),
+    state((OrbtcpFamilyStateVariables *&)TcpPacedFamily::state)
 {
 }
 
 void OrbtcpFamily::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
-    TcpTahoeRenoFamily::receivedDataAck(firstSeqAcked);
+    TcpPacedFamily::receivedDataAck(firstSeqAcked);
 }
 
 void OrbtcpFamily::receiveSeqChanged(IntDataVec intData)
@@ -84,17 +84,12 @@ void OrbtcpFamily::receiveSeqChanged(IntDataVec intData)
 }
 
 void OrbtcpFamily::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData) {
-    TcpTahoeRenoFamily::receivedDuplicateAck();
+    TcpPacedFamily::receivedDuplicateAck();
 }
 
 simtime_t OrbtcpFamily::getRtt()
 {
     return state->srtt;
-}
-
-unsigned int OrbtcpFamily::getCwnd()
-{
-    return state->snd_cwnd;
 }
 
 size_t OrbtcpFamily::getConnId()

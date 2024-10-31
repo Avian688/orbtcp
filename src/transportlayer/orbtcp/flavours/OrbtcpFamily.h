@@ -18,14 +18,14 @@
 
 #include "../../orbtcp/flavours/OrbtcpFamilyState_m.h"
 #include "../OrbtcpConnection.h"
-#include "inet/transportlayer/tcp/flavours/TcpTahoeRenoFamily.h"
+#include "../../../../../tcpPaced/src/transportlayer/tcp/flavours/TcpPacedFamily.h"
 
 namespace inet {
 namespace tcp {
 /**
  * Provides utility functions to implement Hpcc.
  */
-class OrbtcpFamily : public TcpTahoeRenoFamily
+class OrbtcpFamily : public TcpPacedFamily
 {
   protected:
     OrbtcpFamilyStateVariables *& state; // alias to TcpAlgorithm's 'state'
@@ -41,8 +41,6 @@ class OrbtcpFamily : public TcpTahoeRenoFamily
     virtual void receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData);
 
     virtual simtime_t getRtt();
-
-    virtual unsigned int getCwnd();
 
     virtual size_t getConnId();
 

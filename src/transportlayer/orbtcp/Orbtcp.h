@@ -16,21 +16,19 @@
 #ifndef TRANSPORTLAYER_ORBTCP_ORBTCP_H_
 #define TRANSPORTLAYER_ORBTCP_ORBTCP_H_
 
-#include <inet/transportlayer/tcp/Tcp.h>
 #include <inet/transportlayer/tcp/TcpConnection.h>
+#include "../../../../tcpPaced/src/transportlayer/tcp/TcpPaced.h"
 
 namespace inet {
 namespace tcp {
 
-class Orbtcp : public Tcp {
+class Orbtcp : public TcpPaced {
 public:
     Orbtcp();
     virtual ~Orbtcp();
 protected:
     /** Factory method; may be overriden for customizing Tcp */
     virtual TcpConnection* createConnection(int socketId) override;
-public:
-    virtual TcpSendQueue *createSendQueue() override;
 };
 
 } // namespace tcp
