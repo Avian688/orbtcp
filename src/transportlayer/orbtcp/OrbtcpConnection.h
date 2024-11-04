@@ -45,7 +45,6 @@ protected:
     virtual TcpConnection *cloneListeningConnection() override;
 public:
     virtual uint32_t sendSegment(uint32_t bytes) override;
-    virtual void setPipe() override;
 public:
     virtual void sendIntAck(IntDataVec intData);
 protected:
