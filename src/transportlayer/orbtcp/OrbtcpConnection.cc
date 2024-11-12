@@ -914,6 +914,8 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
         // acked data no longer needed in send queue
         sendQueue->discardUpTo(discardUpToSeq);
 
+        enqueueData();
+
         // acked data no longer needed in rexmit queue
         if (state->sack_enabled)
             rexmitQueue->discardUpTo(discardUpToSeq);
