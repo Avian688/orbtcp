@@ -36,7 +36,10 @@ simple IntQueue extends PacketQueue
     	
     	@signal[bandwidth];
    		@statistic[bandwidth](record=vector; interpolationmode=sample-hold);
-    
+    	
+    	@signal[txBytes];
+   		@statistic[txBytes](record=vector; interpolationmode=sample-hold);
+   		
         packetCapacity = default(100);
         double fixedAvgRTTVal = default(0);
         dropperClass = default("inet::queueing::PacketAtCollectionEndDropper");

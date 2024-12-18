@@ -29,6 +29,7 @@ protected:
     static simsignal_t persistentQueueingDelaySignal;
     static simsignal_t numOfFlowsInInitialPhaseSignal;
     static simsignal_t bandwidthSignal;
+    static simsignal_t txBytesSignal;
 
     simtime_t bandwidthRecorderTimer;
     cMessage *bandwidthRecorderTimerMsg = nullptr;

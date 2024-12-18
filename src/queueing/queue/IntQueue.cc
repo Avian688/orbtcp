@@ -22,7 +22,6 @@
 #include "IntQueue.h"
 
 #include "inet/common/ProtocolTag_m.h"
-#include "inet/networklayer/ipv4/IcmpHeader.h"
 
 namespace inet {
 namespace queueing {
@@ -34,6 +33,7 @@ simsignal_t IntQueue::numberOfFlowsSignal = cComponent::registerSignal("numberOf
 simsignal_t IntQueue::persistentQueueingDelaySignal = cComponent::registerSignal("persistentQueueingDelay");
 simsignal_t IntQueue::numOfFlowsInInitialPhaseSignal = cComponent::registerSignal("numOfFlowsInInitialPhase");
 simsignal_t IntQueue::bandwidthSignal = cComponent::registerSignal("bandwidth");
+simsignal_t IntQueue::txBytesSignal = cComponent::registerSignal("txBytes");
 
 void IntQueue::initialize(int stage)
 {
@@ -247,12 +247,13 @@ Packet *IntQueue::pullPacket(cGate *gate)
     if(ipv4Header->getProtocolId() == 6){
         auto tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
         txBytes += packet->getByteLength();
+        cSimpleModule::emit(txBytesSignal, txBytes);
         if(packet->getDataLength() > b(0)) { //Data Packet
             IntMetaData* intData = tcpHeader->addTagIfAbsent<IntTag>()->getIntDataForUpdate().back();
             intData->setAverageRtt(avgRtt.dbl());
             intData->setNumOfFlows(numbOfFlows);
             intData->setNumOfFlowsInInitialPhase(numOfFlowsInInitialPhase);
-            intData->setHopName(getParentModule()->getParentModule()->getFullName());
+            intData->setHopId(getParentModule()->getParentModule()->getId());
             intData->setQLen(queue.getByteLength());
             intData->setTs(simTime());
             intData->setTxBytes(txBytes);

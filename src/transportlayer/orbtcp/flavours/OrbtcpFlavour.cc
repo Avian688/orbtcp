@@ -12,7 +12,7 @@
 namespace inet {
 namespace tcp {
 
-#define MIN_REXMIT_TIMEOUT     1.0   // 1s
+#define MIN_REXMIT_TIMEOUT     1   // 1s
 #define MAX_REXMIT_TIMEOUT     240   // 2 * MSL (RFC 1122)
 
 Register_Class(OrbtcpFlavour);
@@ -242,7 +242,7 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
         //recalculateSlowStartThreshold();
         // "set cwnd to ssthresh plus 3 * SMSS." (RFC 2581)
         //state->snd_cwnd = state->ssthresh + 3 * state->snd_mss; // 20051129 (1)
-        state->snd_cwnd = state->snd_cwnd + state->dupthresh * state->snd_mss;
+        //state->snd_cwnd = state->snd_cwnd + state->dupthresh * state->snd_mss;
         conn->emit(cwndSignal, state->snd_cwnd);
 
         EV_DETAIL << " set cwnd=" << state->snd_cwnd << ", ssthresh=" << state->ssthresh << "\n";
@@ -337,85 +337,6 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
     sendData(false);
 }
 
-//void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData) {
-//    TcpTahoeRenoFamily::receivedDuplicateAck();
-//    //if(conn->getId() == 203 && simTime().dbl() > 16){
-//    //    std::cout << "\n CONN: " << conn->str() << " simtime: " << simTime().dbl() << endl;
-//    //    std::cout << "\n DUP ACKS: " << state->dupacks << endl;
-//    //}
-//
-//    if (state->dupacks >= state->dupthresh) {
-//        if (!state->lossRecovery
-//                && (state->recoveryPoint == 0
-//                        || seqGE(state->snd_una, state->recoveryPoint))) {
-//
-//            std::cout << "\n Entering Loss recovery - dup acks > dupthresh at simTime: " << simTime().dbl() << endl;
-//
-//            state->recoveryPoint = state->snd_max; // HighData = snd_max
-//            conn->emit(sndUnaSignal, state->snd_una);
-//            conn->emit(recoveryPointSignal, state->recoveryPoint);
-//            state->lossRecovery = true;
-//            EV_DETAIL << " recoveryPoint=" << state->recoveryPoint;
-//            conn->emit(lossRecoverySignal, state->snd_cwnd);
-//
-//            // enter Fast Recovery
-//            //recalculateSlowStartThreshold();
-//            // "set cwnd to ssthresh plus 3 * SMSS." (RFC 2581)
-//            //state->snd_cwnd = state->ssthresh + state->dupthresh*state->snd_mss;
-//
-//            EV_DETAIL << " set cwnd=" << state->snd_cwnd << ", ssthresh="
-//                             << state->ssthresh << "\n";
-//
-//            // Fast Retransmission: retransmit missing segment without waiting
-//            // for the REXMIT timer to expire
-//            //state->rtseq_sendtime = 0;
-//            state->snd_cwnd = state->snd_cwnd + state->dupthresh*state->snd_mss;
-//
-//            std::cout << "\n RECOVERY POINT = " << state->recoveryPoint << endl;
-//            conn->retransmitOneSegment(false);
-//            conn->emit(highRxtSignal, state->highRxt);
-//        }
-//    }
-//
-//    //std::cout << "\n DUP ACK RECEIVED: " << endl;
-//    if(firstSeqAcked > state->lastUpdateSeq) {
-//        std::cout << "\n UPDATING CWND GIVEN DUP ACK" << endl;
-//        double uVal = measureInflight(intData);
-//        if(uVal > 0){
-//            state->snd_cwnd = computeWnd(uVal, true);
-//        }
-//        conn->emit(cwndSignal, state->snd_cwnd);
-//        state->lastUpdateSeq = state->snd_nxt;
-//    }
-//    else {
-//        double uVal = measureInflight(intData);
-//        if(uVal > 0){
-//            state->snd_cwnd = computeWnd(uVal, false);
-//        }
-//        conn->emit(cwndSignal, state->snd_cwnd);
-//    }
-//    state->L = intData;
-//
-//    if(state->snd_cwnd > 0){
-//        double pace = estimatedRtt.dbl()/((double) state->snd_cwnd/(double)state->snd_mss);
-//        dynamic_cast<OrbtcpConnection*>(conn)->changeIntersendingTime(pace);
-//    }
-//
-//    conn->emit(cwndSignal, state->snd_cwnd);
-//
-//    if (state->lossRecovery) {
-//        dynamic_cast<OrbtcpConnection*>(conn)->setPipe();
-//
-//        if (((int) (state->snd_cwnd / state->snd_mss)
-//                - (int) (state->pipe / (state->snd_mss))) >= 1) { // Note: Typecast needed to avoid prohibited transmissions
-//            conn->sendDataDuringLossRecoveryPhase(state->snd_cwnd);
-//        }
-//        conn->emit(recoveryPointSignal, state->recoveryPoint);
-//    }
-//    conn->emit(sndUnaSignal, state->snd_una);
-//    conn->emit(sndMaxSignal, state->snd_max);
-//}
-
 double OrbtcpFlavour::measureInflight(IntDataVec intData)
 {
     double u = 0;
@@ -426,11 +347,28 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     double totalQueueingDelay = 0;
 
     double bottleneckRtt;
-
+    double bottleneckSharingFlows;
+    double bottleneckInitPhaseFlows;
+    std::vector<bool> currPathId(16);
     for(int i = 0; i < intData.size(); i++){ //Start at front of queue. First item is first hop etc.
         double uPrime = 0;
         IntMetaData* intDataEntry = intData.at(i);
         if(state->L.size() == intData.size()){ //TODO replace with check to ensure the hops are the same, maybe hopID? Look at paper/rfc
+
+            int hopId = intDataEntry->getHopId();
+            std::vector<bool> bitArray(16);
+            std::vector<bool> tempBitArray(16);
+            int bitSize = 16;
+
+            for (size_t i = 0; i < bitSize; ++i) {
+                bitArray[(bitSize-1) - i] = (hopId >> i) & 1;
+            }
+
+            for (size_t i = 0; i < bitArray.size(); ++i) {
+                tempBitArray[i] = currPathId[i] ^ bitArray[i];  // XOR the corresponding bits
+            }
+
+            currPathId = tempBitArray;
 
             if(intDataEntry->getAverageRtt() > 0) {
                 initPackets = false;
@@ -440,19 +378,24 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
             }
 
             if(!initPackets){
-
+                //std::bitset<1> b = (a1 ^= a2);
                 totalQueueingDelay +=(double)intDataEntry->getRxQlen()/(double)intDataEntry->getB();
                 //txRate is bytes observed at router between prev and current ACK packet subtracted from the timestamp of the prev and current ack. Equals estimated rate.
-                state->txRate = (intDataEntry->getTxBytes() - state->L.at(i)->getTxBytes())/(intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl());
-                uPrime = (intDataEntry->getQLen())/(intDataEntry->getB()*intDataEntry->getAverageRtt())+(state->txRate/intDataEntry->getB());
+                double hopTxRate = (intDataEntry->getTxBytes() - state->L.at(i)->getTxBytes())/(intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl());
+                uPrime = (intDataEntry->getQLen())/(intDataEntry->getB()*intDataEntry->getAverageRtt())+(hopTxRate/intDataEntry->getB());
                 if(uPrime > u) {
                     u = uPrime;
                     tau = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
-                    state->sharingFlows = intDataEntry->getNumOfFlows();
-                    state->initialPhaseSharingFlows = intDataEntry->getNumOfFlowsInInitialPhase();
+                    if(intDataEntry->getTs().dbl() < state->L.at(i)->getTs().dbl()) {
+                        std::cout << "\n CURRENT ACK HOP TIMESTAMP IS OUT OF ORDER " << endl;
+                    }
+
+                    bottleneckSharingFlows = intDataEntry->getNumOfFlows();
+                    bottleneckInitPhaseFlows = intDataEntry->getNumOfFlowsInInitialPhase();
                     bottleneckAverageRtt = intDataEntry->getAverageRtt();
                     bottleneckRtt = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
-                    bottleneckTxRate = state->txRate;
+                    bottleneckTxRate = hopTxRate;
+
                     if(bottleneckAverageRtt <= 0){
                         bottleneckAverageRtt = estimatedRtt.dbl();
                         EV_DEBUG << "bottleneckAverageRtt is lower or equal to 0!\n";
@@ -462,6 +405,22 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
             }
         }
         else{
+
+            int hopId = intDataEntry->getHopId();
+            std::vector<bool> bitArray(16);
+
+            std::vector<bool> tempBitArray(16);
+            int bitSize = 16;
+
+            for (size_t i = 0; i < bitSize; ++i) {
+                bitArray[(bitSize-1) - i] = (hopId >> i) & 1;
+            }
+
+            for (size_t i = 0; i < bitArray.size(); ++i) {
+                tempBitArray[i] = bitArray[i] ^ currPathId[i];  // XOR the corresponding bits
+            }
+            currPathId = tempBitArray;
+
             if(intDataEntry->getAverageRtt() > 0) {
                 initPackets = false;
             }
@@ -469,15 +428,16 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
                 return 0;
             }
 
-            state->txRate = intDataEntry->getTxBytes()/intDataEntry->getAverageRtt();
+            double hopTxRate = intDataEntry->getTxBytes()/intDataEntry->getAverageRtt();
             totalQueueingDelay +=(double)(intDataEntry->getRxQlen())/(double)intDataEntry->getB();
-            uPrime = (intDataEntry->getQLen()/(intDataEntry->getB()*intDataEntry->getAverageRtt()))+(state->txRate/intDataEntry->getB());
+            uPrime = (intDataEntry->getQLen()/(intDataEntry->getB()*intDataEntry->getAverageRtt()))+(hopTxRate/intDataEntry->getB());
             if(uPrime > u) {
                 u = uPrime;
                 tau = intDataEntry->getTs().dbl();
+                bottleneckSharingFlows = intDataEntry->getNumOfFlows();
+                bottleneckInitPhaseFlows = intDataEntry->getNumOfFlowsInInitialPhase();
                 bottleneckAverageRtt = intDataEntry->getAverageRtt();
-                bottleneckRtt = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
-                bottleneckTxRate = state->txRate;
+                bottleneckTxRate = hopTxRate;
                 if(bottleneckAverageRtt <= 0){
                     bottleneckAverageRtt = estimatedRtt.dbl();
                     EV_DEBUG << "bottleneckAverageRtt is lower or equal to 0!\n";
@@ -486,8 +446,20 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
         }
     }
 
+    if(pathId.empty()) {
+        pathId = currPathId;
+    }
+    else if(pathId != currPathId){
+        pathId = currPathId;
+        return state->u;
+    }
+    state->sharingFlows = bottleneckSharingFlows;
+    state->initialPhaseSharingFlows = bottleneckInitPhaseFlows;
+
+    state->txRate = bottleneckTxRate;
     state->bottBW = bottleneckBandwidth;
     state->queueingDelay = totalQueueingDelay;
+
     conn->emit(queueingDelaySignal, state->queueingDelay);
     conn->emit(avgEstimatedRttSignal, bottleneckAverageRtt);
     conn->emit(txRateSignal, bottleneckTxRate);

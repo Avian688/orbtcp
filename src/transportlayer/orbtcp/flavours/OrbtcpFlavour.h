@@ -57,6 +57,9 @@ class OrbtcpFlavour : public OrbtcpFamily
     size_t connId;
     simtime_t rtt;
     simtime_t estimatedRtt;
+
+    std::vector<bool> pathId;
+
     bool initPackets;
     /** Create and return a OrbtcpStateVariables object. */
     virtual TcpStateVariables *createStateVariables() override

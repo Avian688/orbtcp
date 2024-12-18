@@ -17,7 +17,7 @@ class IntDataVec { @existingClass; }
 
 class IntMetaData extends cObject
 {
-    string hopName; //may
+    int hopId; //may
 	simtime_t ts; // Timestamp
 	long qLen; // TX Queue Length
 	long txBytes; // Transmitted Bytes
