@@ -349,12 +349,14 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     double bottleneckRtt;
     double bottleneckSharingFlows;
     double bottleneckInitPhaseFlows;
+    bool bottleneckIsPastAck = false;
     std::vector<bool> currPathId(16);
     for(int i = 0; i < intData.size(); i++){ //Start at front of queue. First item is first hop etc.
         double uPrime = 0;
         IntMetaData* intDataEntry = intData.at(i);
         if(state->L.size() == intData.size()){ //TODO replace with check to ensure the hops are the same, maybe hopID? Look at paper/rfc
 
+            bool isPastAck = false;
             int hopId = intDataEntry->getHopId();
             std::vector<bool> bitArray(16);
             std::vector<bool> tempBitArray(16);
@@ -383,19 +385,21 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
                 //txRate is bytes observed at router between prev and current ACK packet subtracted from the timestamp of the prev and current ack. Equals estimated rate.
                 double hopTxRate = (intDataEntry->getTxBytes() - state->L.at(i)->getTxBytes())/(intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl());
                 uPrime = (intDataEntry->getQLen())/(intDataEntry->getB()*intDataEntry->getAverageRtt())+(hopTxRate/intDataEntry->getB());
+                if(intDataEntry->getTs().dbl() < state->L.at(i)->getTs().dbl()) {
+                  //std::cout << "\n CURRENT ACK HOP TIMESTAMP IS OUT OF ORDER " << endl;
+                    isPastAck = true;
+                }
+
                 if(uPrime > u) {
                     u = uPrime;
                     tau = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
-                    if(intDataEntry->getTs().dbl() < state->L.at(i)->getTs().dbl()) {
-                        std::cout << "\n CURRENT ACK HOP TIMESTAMP IS OUT OF ORDER " << endl;
-                    }
 
                     bottleneckSharingFlows = intDataEntry->getNumOfFlows();
                     bottleneckInitPhaseFlows = intDataEntry->getNumOfFlowsInInitialPhase();
                     bottleneckAverageRtt = intDataEntry->getAverageRtt();
                     bottleneckRtt = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
                     bottleneckTxRate = hopTxRate;
-
+                    bottleneckIsPastAck = isPastAck;
                     if(bottleneckAverageRtt <= 0){
                         bottleneckAverageRtt = estimatedRtt.dbl();
                         EV_DEBUG << "bottleneckAverageRtt is lower or equal to 0!\n";
@@ -453,6 +457,11 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
         pathId = currPathId;
         return state->u;
     }
+
+    if(bottleneckIsPastAck){
+        return state->u;
+    }
+
     state->sharingFlows = bottleneckSharingFlows;
     state->initialPhaseSharingFlows = bottleneckInitPhaseFlows;
 
