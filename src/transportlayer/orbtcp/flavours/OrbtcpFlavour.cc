@@ -12,7 +12,7 @@
 namespace inet {
 namespace tcp {
 
-#define MIN_REXMIT_TIMEOUT     1   // 1s
+#define MIN_REXMIT_TIMEOUT     0.2   // 1s
 #define MAX_REXMIT_TIMEOUT     240   // 2 * MSL (RFC 1122)
 
 Register_Class(OrbtcpFlavour);
