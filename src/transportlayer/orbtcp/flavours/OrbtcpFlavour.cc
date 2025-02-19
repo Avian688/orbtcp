@@ -118,6 +118,8 @@ void OrbtcpFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAcked)
 
     state->rexmit_timeout = rto;
 
+    dynamic_cast<TcpPacedConnection*>(conn)->setMinRtt(std::min(srtt, dynamic_cast<TcpPacedConnection*>(conn)->getMinRtt()));
+
     // record statistics
     EV_DETAIL << "Measured RTT=" << (newRTT * 1000) << "ms, updated SRTT=" << (srtt * 1000)
               << "ms, new RTO=" << (rto * 1000) << "ms\n";
@@ -141,6 +143,7 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
     EV_INFO << "\nORBTCPInfo - Received Data Ack" << endl;
 
     TcpTahoeRenoFamily::receivedDataAck(firstSeqAcked);
+
     if(firstSeqAcked > state->lastUpdateSeq) {
         double uVal = measureInflight(intData);
         if(uVal > 0){
@@ -187,11 +190,12 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
             // in the network."
             else {
                 // update of scoreboard (B.1) has already be done in readHeaderOptions()
-                conn->setPipe();
+                //conn->setPipe();
             }
             conn->emit(recoveryPointSignal, state->recoveryPoint);
         }
         sendData(false);
+
         conn->emit(sndUnaSignal, state->snd_una);
         conn->emit(sndMaxSignal, state->snd_max);
 }
@@ -200,7 +204,8 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
 {
     TcpTahoeRenoFamily::receivedDuplicateAck();
 
-    if (state->dupacks == state->dupthresh) {
+    bool isHighRxtLost = dynamic_cast<TcpPacedConnection*>(conn)->checkIsLost(dynamic_cast<TcpPacedConnection*>(conn)->getHighestRexmittedSeqNum());
+    if (state->dupacks == state->dupthresh || isHighRxtLost) {
         EV_INFO << "Reno on dupAcks == DUPTHRESH(=" << state->dupthresh << ": perform Fast Retransmit, and enter Fast Recovery:";
 
         if (state->sack_enabled) {
@@ -226,57 +231,29 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
             // RecoveryPoint."
             if (state->recoveryPoint == 0 || seqGE(state->snd_una, state->recoveryPoint)) { // HighACK = snd_una
                 state->recoveryPoint = state->snd_max; // HighData = snd_max
+                dynamic_cast<TcpPacedConnection*>(conn)->setSackedHeadLost();
+                dynamic_cast<TcpPacedConnection*>(conn)->updateInFlight();
                 //std::cout << "\n Entering Loss recovery - dup acks > dupthresh at simTime: " << simTime().dbl() << endl;
                 state->lossRecovery = true;
                 EV_DETAIL << " recoveryPoint=" << state->recoveryPoint;
+
+                dynamic_cast<TcpPacedConnection*>(conn)->retransmitNext(false);
             }
         }
-        // RFC 2581, page 5:
-        // "After the fast retransmit algorithm sends what appears to be the
-        // missing segment, the "fast recovery" algorithm governs the
-        // transmission of new data until a non-duplicate ACK arrives.
-        // (...) the TCP sender can continue to transmit new
-        // segments (although transmission must continue using a reduced cwnd)."
 
-        // enter Fast Recovery
-        //recalculateSlowStartThreshold();
-        // "set cwnd to ssthresh plus 3 * SMSS." (RFC 2581)
-        //state->snd_cwnd = state->ssthresh + 3 * state->snd_mss; // 20051129 (1)
-        //state->snd_cwnd = state->snd_cwnd + state->dupthresh * state->snd_mss;
         conn->emit(cwndSignal, state->snd_cwnd);
 
         EV_DETAIL << " set cwnd=" << state->snd_cwnd << ", ssthresh=" << state->ssthresh << "\n";
 
         // Fast Retransmission: retransmit missing segment without waiting
         // for the REXMIT timer to expire
-        dynamic_cast<OrbtcpConnection*>(conn)->retransmitNext(false);
         sendData(false);
         // Do not restart REXMIT timer.
         // Note: Restart of REXMIT timer on retransmission is not part of RFC 2581, however optional in RFC 3517 if sent during recovery.
         // Resetting the REXMIT timer is discussed in RFC 2582/3782 (NewReno) and RFC 2988.
 
         if (state->sack_enabled) {
-            // RFC 3517, page 7: "(4) Run SetPipe ()
-            //
-            // Set a "pipe" variable  to the number of outstanding octets
-            // currently "in the pipe"; this is the data which has been sent by
-            // the TCP sender but for which no cumulative or selective
-            // acknowledgment has been received and the data has not been
-            // determined to have been dropped in the network.  It is assumed
-            // that the data is still traversing the network path."
-            conn->setPipe();
-            // RFC 3517, page 7: "(5) In order to take advantage of potential additional available
-            // cwnd, proceed to step (C) below."
             if (state->lossRecovery) {
-                // RFC 3517, page 9: "Therefore we give implementers the latitude to use the standard
-                // [RFC2988] style RTO management or, optionally, a more careful variant
-                // that re-arms the RTO timer on each retransmission that is sent during
-                // recovery MAY be used.  This provides a more conservative timer than
-                // specified in [RFC2988], and so may not always be an attractive
-                // alternative.  However, in some cases it may prevent needless
-                // retransmissions, go-back-N transmission and further reduction of the
-                // congestion window."
-                // Note: Restart of REXMIT timer on retransmission is not part of RFC 2581, however optional in RFC 3517 if sent during recovery.
                 EV_INFO << "Retransmission sent during recovery, restarting REXMIT timer.\n";
                 restartRexmitTimer();
             }
@@ -538,27 +515,8 @@ simtime_t OrbtcpFlavour::getRtt()
 }
 
 void OrbtcpFlavour::processRexmitTimer(TcpEventCode &event) {
-    TcpTahoeRenoFamily::processRexmitTimer(event);
+    TcpPacedFamily::processRexmitTimer(event);
 
-    if (event == TCP_E_ABORT)
-        return;
-
-    // After REXMIT timeout TCP Reno should start slow start with snd_cwnd = snd_mss.
-    //
-    // If calling "retransmitData();" there is no rexmit limitation (bytesToSend > snd_cwnd)
-    // therefore "sendData();" has been modified and is called to rexmit outstanding data.
-    //
-    // RFC 2581, page 5:
-    // "Furthermore, upon a timeout cwnd MUST be set to no more than the loss
-    // window, LW, which equals 1 full-sized segment (regardless of the
-    // value of IW).  Therefore, after retransmitting the dropped segment
-    // the TCP sender uses the slow start algorithm to increase the window
-    // from 1 full-sized segment to the new value of ssthresh, at which
-    // point congestion avoidance again takes over."
-
-    // begin Slow Start (RFC 2581)
-    //recalculateSlowStartThreshold();
-    //state->snd_cwnd = state->snd_mss;
 
     conn->emit(cwndSignal, state->snd_cwnd);
 

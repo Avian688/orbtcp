@@ -40,7 +40,6 @@ protected:
 
     virtual void initConnection(TcpOpenCommand *openCmd) override;
     virtual void initClonedConnection(TcpConnection *listenerConn) override;
-    virtual void configureStateVariables() override;
     virtual void process_SEND(TcpEventCode& event, TcpCommand *tcpCommand, cMessage *msg) override;
     virtual TcpConnection *cloneListeningConnection() override;
 public:

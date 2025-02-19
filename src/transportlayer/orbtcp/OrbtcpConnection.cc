@@ -58,61 +58,6 @@ void OrbtcpConnection::initClonedConnection(TcpConnection *listenerConn)
 
 }
 
-void OrbtcpConnection::configureStateVariables()
-{
-    state->dupthresh = tcpMain->par("dupthresh");
-    long advertisedWindowPar = tcpMain->par("advertisedWindow");
-    state->ws_support = tcpMain->par("windowScalingSupport"); // if set, this means that current host supports WS (RFC 1323)
-    state->ws_manual_scale = tcpMain->par("windowScalingFactor"); // scaling factor (set manually) to help for Tcp validation
-    state->ecnWillingness = tcpMain->par("ecnWillingness"); // if set, current host is willing to use ECN
-    if ((!state->ws_support && advertisedWindowPar > TCP_MAX_WIN) || advertisedWindowPar <= 0 || advertisedWindowPar > TCP_MAX_WIN_SCALED)
-        throw cRuntimeError("Invalid advertisedWindow parameter: %ld", advertisedWindowPar);
-
-    state->rcv_wnd = advertisedWindowPar;
-    state->rcv_adv = advertisedWindowPar;
-
-    if (state->ws_support && advertisedWindowPar > TCP_MAX_WIN) {
-        state->rcv_wnd = TCP_MAX_WIN; // we cannot to guarantee that the other end is also supporting the Window Scale (header option) (RFC 1322)
-        state->rcv_adv = TCP_MAX_WIN; // therefore TCP_MAX_WIN is used as initial value for rcv_wnd and rcv_adv
-    }
-
-    state->maxRcvBuffer = advertisedWindowPar;
-    state->delayed_acks_enabled = tcpMain->par("delayedAcksEnabled"); // delayed ACK algorithm (RFC 1122) enabled/disabled
-    state->nagle_enabled = tcpMain->par("nagleEnabled"); // Nagle's algorithm (RFC 896) enabled/disabled
-    state->limited_transmit_enabled = tcpMain->par("limitedTransmitEnabled"); // Limited Transmit algorithm (RFC 3042) enabled/disabled
-    state->increased_IW_enabled = tcpMain->par("increasedIWEnabled"); // Increased Initial Window (RFC 3390) enabled/disabled
-    state->snd_mss = tcpMain->par("mss"); // Maximum Segment Size (RFC 793)
-    state->ts_support = tcpMain->par("timestampSupport"); // if set, this means that current host supports TS (RFC 1323)
-    state->sack_support = tcpMain->par("sackSupport"); // if set, this means that current host supports SACK (RFC 2018, 2883, 3517)
-
-    if (state->sack_support) {
-        std::vector<std::string> algorithmNames = {
-            "TcpReno",
-            "OrbtcpFlavour",
-            "HpccFlavour",
-            "OrbtcpRttFlavour",
-            "OrbtcpAvgRttFlavour",
-            "OrbtcpNoSSFlavour",
-            "OrbtcpNoSSAvgRttAIFlavour",
-            "OrbtcpTauUFlavour",
-            "OrbtcpEstRttAIFlavour",
-            "OrbtcpHalfMDFlavour",
-            "OrbtcpAIorMDFlavour",
-            "Orbtcp23SplitFlavour",
-            "OrbtcpConservativeFlavour",
-            "OrbtcpIPCutOffFlavour",
-            "OrbtcpNumFlowsInitialPhaseFlavour"
-        };
-
-        std::string algorithmName3 = tcpMain->par("tcpAlgorithmClass");
-
-        if (std::find(algorithmNames.begin(), algorithmNames.end(), algorithmName3) == algorithmNames.end()) {
-            EV_DEBUG << "If you want to use TCP SACK please set tcpAlgorithmClass to TcpReno\n";
-            ASSERT(false);
-        }
-    }
-}
-
 void OrbtcpConnection::process_SEND(TcpEventCode& event, TcpCommand *tcpCommand, cMessage *msg)
 {
     // FIXME how to support PUSH? One option is to treat each SEND as a unit of data,
@@ -794,6 +739,9 @@ TcpEventCode OrbtcpConnection::processSegment1stThru8th(Packet *tcpSegment, cons
 bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const TcpHeader>& tcpHeader)
 {
     EV_DETAIL << "Processing ACK in a data transfer state\n";
+    uint64_t previousDelivered = m_delivered;  //RATE SAMPLER SPECIFIC STUFF
+    uint32_t previousLost = m_bytesLoss; //TODO Create Sack method to get exact amount of lost packets
+    uint32_t priorInFlight = m_bytesInFlight;//get current BytesInFlight somehow
 
     int payloadLength = tcpSegment->getByteLength() - B(tcpHeader->getHeaderLength()).get();
 
@@ -844,18 +792,27 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
         // are ignored anyway if neither seqNo nor ackNo has changed.
         //
         if (state->snd_una == tcpHeader->getAckNo() && payloadLength == 0 && state->snd_una != state->snd_max) {
-            state->dupacks = state->dupacks + 1;
-
-//            if(this->getId() == 203 && simTime().dbl() > 16){
-//                std::cout << "\n DUP ACK RECEIVED WITH ACK NO: " << tcpHeader->getAckNo() << endl;
-//                std::cout << "\n CURRENT SND_UNA: " << state->snd_una << endl;
-//            }
+            state->dupacks++;
 
             emit(dupAcksSignal, state->dupacks);
 
             // we need to update send window even if the ACK is a dupACK, because rcv win
             // could have been changed if faulty data receiver is not respecting the "do not shrink window" rule
             updateWndInfo(tcpHeader);
+
+            if (payloadLength == 0 && fsm.getState() != TCP_S_SYN_RCVD) {
+                skbDelivered(tcpHeader->getAckNo());
+            }
+
+            uint32_t currentDelivered  = m_delivered - previousDelivered;
+            m_lastAckedSackedBytes = currentDelivered;
+
+            updateInFlight();
+
+            uint32_t currentLost = m_bytesLoss;
+            uint32_t lost = (currentLost > previousLost) ? currentLost - previousLost : previousLost - currentLost;
+
+            updateSample(currentDelivered, lost, false, priorInFlight, connMinRtt);
 
             if(tcpHeader->findTag<IntTag>()){
                 IntDataVec intDataNew = tcpHeader->getTag<IntTag>()->getIntData();
@@ -864,6 +821,8 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             else{
                 tcpAlgorithm->receivedDuplicateAck();
             }
+
+            sendPendingData();
         }
         else {
             if (payloadLength == 0) {
@@ -924,11 +883,16 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
         // if segment contains data, wait until data has been forwarded to app before sending ACK,
         // otherwise we would use an old ACKNo
         if (payloadLength == 0 && fsm.getState() != TCP_S_SYN_RCVD) {
-            // notify
-            //tcpAlgorithm->receivedDataAck(old_snd_una);
-            //std::cout << "\n At receiver. Int tag 1 QLen: " << tcpHeader->getTag<IntTag>()->getIntData().front()->getQLen() << endl;
-            //std::cout << "\n At receiver. Int tag 1 Timestamp: " << tcpHeader->getTag<IntTag>()->getIntData().front()->getTs() << endl;
-            //std::cout << "Packet info: " << tcpHeader->str() << endl;
+
+            uint32_t currentDelivered  = m_delivered - previousDelivered;
+            m_lastAckedSackedBytes = currentDelivered;
+
+            updateInFlight();
+
+            uint32_t currentLost = m_bytesLoss;
+            uint32_t lost = (currentLost > previousLost) ? currentLost - previousLost : previousLost - currentLost;
+
+            updateSample(currentDelivered, lost, false, priorInFlight, connMinRtt);
 
             if(tcpHeader->findTag<IntTag>()){
                 IntDataVec intDataNew = tcpHeader->getTag<IntTag>()->getIntData();
@@ -939,7 +903,11 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             }
             // in the receivedDataAck we need the old value
             state->dupacks = 0;
+
+            sendPendingData();
+
             emit(dupAcksSignal, state->dupacks);
+            emit(mDeliveredSignal, m_delivered);
         }
     }
     else {
@@ -953,7 +921,6 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
 
         return false; // means "drop"
     }
-    sendPendingData();
     return true;
 }
 
@@ -1015,6 +982,7 @@ void OrbtcpConnection::sendIntAck(IntDataVec intData)
 
 uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
 {
+    updateInFlight();
     // FIXME check it: where is the right place for the next code (sacked/rexmitted)
     if (state->sack_enabled && state->afterRto) {
         // check rexmitQ and try to forward snd_nxt before sending new data
@@ -1039,14 +1007,13 @@ uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
     const auto& tmpTcpHeader = makeShared<TcpHeader>();
     tmpTcpHeader->setAckBit(true); // needed for TS option, otherwise TSecr will be set to 0
     writeHeaderOptions(tmpTcpHeader);
-    uint options_len = B(tmpTcpHeader->getHeaderLength() - TCP_MIN_HEADER_LENGTH).get();
+    //uint options_len = B(tmpTcpHeader->getHeaderLength() - TCP_MIN_HEADER_LENGTH).get();
 
-    ASSERT(options_len < state->snd_mss);
+    //ASSERT(options_len < state->snd_mss);
 
     //if (bytes + options_len > state->snd_mss)
     //    bytes = state->snd_mss - options_len;
     bytes = state->snd_mss;
-
     uint32_t sentBytes = bytes;
 
     // send one segment of 'bytes' bytes from snd_nxt, and advance snd_nxt
@@ -1086,9 +1053,12 @@ uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
     }
 
     // if sack_enabled copy region of tcpHeader to rexmitQueue
-    if (state->sack_enabled)
+    if (state->sack_enabled){
         rexmitQueue->enqueueSentData(old_snd_nxt, state->snd_nxt);
-
+        if(pace){
+            rexmitQueue->skbSent(state->snd_nxt, m_firstSentTime, simTime(), m_deliveredTime, false, m_delivered, m_appLimited);
+        }
+    }
     // add header options and update header length (from tcpseg_temp)
     for (uint i = 0; i < tmpTcpHeader->getHeaderOptionArraySize(); i++)
         tcpHeader->appendHeaderOption(tmpTcpHeader->getHeaderOption(i)->dup());
@@ -1101,6 +1071,8 @@ uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
     tcpHeader->addTagIfAbsent<IntTag>()->setRtt(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getRtt());
     tcpHeader->addTagIfAbsent<IntTag>()->setCwnd(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getCwnd());
     tcpHeader->addTagIfAbsent<IntTag>()->setInitialPhase(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getInitialPhase());
+
+    calculateAppLimited();
 
     sendToIP(tcpSegment, tcpHeader);
 
@@ -1119,6 +1091,7 @@ uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
     if (seqGreater(state->snd_nxt, state->snd_max))
         state->snd_max = state->snd_nxt;
 
+    updateInFlight();
     return sentBytes;
 }
 

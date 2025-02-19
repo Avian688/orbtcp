@@ -33,25 +33,8 @@ OBJS = \
     $O/queueing/queue/IntQueue.o \
     $O/transportlayer/orbtcp/Orbtcp.o \
     $O/transportlayer/orbtcp/OrbtcpConnection.o \
-    $O/transportlayer/orbtcp/flavours/HpccFlavour.o \
-    $O/transportlayer/orbtcp/flavours/Orbtcp23SplitFlavour.o \
-    $O/transportlayer/orbtcp/flavours/Orbtcp23SplitIPValFlavour.o \
-    $O/transportlayer/orbtcp/flavours/Orbtcp52Split93UFlavour.o \
-    $O/transportlayer/orbtcp/flavours/Orbtcp52Split93UIPValFlavour.o \
-    $O/transportlayer/orbtcp/flavours/OrbtcpAIorMDFlavour.o \
-    $O/transportlayer/orbtcp/flavours/OrbtcpAvgRttFlavour.o \
-    $O/transportlayer/orbtcp/flavours/OrbtcpConservativeFlavour.o \
-    $O/transportlayer/orbtcp/flavours/OrbtcpEstRttAIFlavour.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpFamily.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpFlavour.o \
-    $O/transportlayer/orbtcp/flavours/OrbtcpHalfMDFlavour.o \
-    $O/transportlayer/orbtcp/flavours/OrbtcpIPCutOffFlavour.o \
-    $O/transportlayer/orbtcp/flavours/OrbtcpNoReactLossFlavour.o \
-    $O/transportlayer/orbtcp/flavours/OrbtcpNoSSAvgRttAIFlavour.o \
-    $O/transportlayer/orbtcp/flavours/OrbtcpNoSSFlavour.o \
-    $O/transportlayer/orbtcp/flavours/OrbtcpNumFlowsInitialPhaseFlavour.o \
-    $O/transportlayer/orbtcp/flavours/OrbtcpRttFlavour.o \
-    $O/transportlayer/orbtcp/flavours/OrbtcpTauUFlavour.o \
     $O/common/IntTag_m.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpFamilyState_m.o
 
