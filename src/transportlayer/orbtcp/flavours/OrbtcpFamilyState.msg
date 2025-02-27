@@ -21,24 +21,24 @@ struct OrbtcpFamilyStateVariables extends TcpTahoeRenoFamilyStateVariables
 {
     @descriptor(readonly);
     
-    int B; //bandwidth
+    int B = 0; //bandwidth
     simtime_t T = 0; //base propagation RTT
-    double txRate;
-    double normalisedInflight;
-    double normalisedInflightPrev;
+    double txRate = 0;
+    double normalisedInflight = 0;
+    double normalisedInflightPrev = 0;
     double u = 1;
     double eta = 0.95;  //0.95
     double queueingDelay = 0;
     uint32_t targetUtil = 0;
     int incStage = 0;
     int maxStage = 500;
-    uint32_t prevWnd;
-    uint32_t additiveIncrease;
-    uint32_t additiveIncreaseGainPerAck;
+    uint32_t prevWnd = 0;
+    uint32_t additiveIncrease = 0;
+    uint32_t additiveIncreaseGainPerAck = 0;
     
-    uint32_t lastUpdateSeq;
+    uint32_t lastUpdateSeq = 0;
     
-    double R; //pacing rate
+    double R = 0; //pacing rate
     
     int subFlows = 1;
     int sharingFlows = 1;
