@@ -204,7 +204,7 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
 {
     TcpTahoeRenoFamily::receivedDuplicateAck();
 
-    bool isHighRxtLost = dynamic_cast<TcpPacedConnection*>(conn)->checkIsLost(dynamic_cast<TcpPacedConnection*>(conn)->getHighestRexmittedSeqNum());
+    bool isHighRxtLost = dynamic_cast<TcpPacedConnection*>(conn)->checkIsLost(state->snd_una+state->snd_mss);
     if (state->dupacks == state->dupthresh || isHighRxtLost) {
         EV_INFO << "Reno on dupAcks == DUPTHRESH(=" << state->dupthresh << ": perform Fast Retransmit, and enter Fast Recovery:";
 
@@ -229,7 +229,7 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
             // recovery phase (as described in section 5) MUST NOT be initiated
             // until HighACK is greater than or equal to the new value of
             // RecoveryPoint."
-            if (state->recoveryPoint == 0 || seqGE(state->snd_una, state->recoveryPoint)) { // HighACK = snd_una
+            if ((state->recoveryPoint == 0 || seqGE(state->snd_una, state->recoveryPoint)) && !state->lossRecovery) { // HighACK = snd_una
                 state->recoveryPoint = state->snd_max; // HighData = snd_max
                 dynamic_cast<TcpPacedConnection*>(conn)->setSackedHeadLost();
                 dynamic_cast<TcpPacedConnection*>(conn)->updateInFlight();
