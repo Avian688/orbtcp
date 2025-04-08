@@ -237,7 +237,7 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
                 state->lossRecovery = true;
                 EV_DETAIL << " recoveryPoint=" << state->recoveryPoint;
 
-                dynamic_cast<TcpPacedConnection*>(conn)->retransmitNext(false);
+                dynamic_cast<TcpPacedConnection*>(conn)->doRetransmit();
             }
         }
 
@@ -526,8 +526,7 @@ void OrbtcpFlavour::processRexmitTimer(TcpEventCode &event) {
     state->afterRto = true;
     dynamic_cast<OrbtcpConnection*>(conn)->cancelPaceTimer();
 
-    dynamic_cast<OrbtcpConnection*>(conn)->retransmitNext(true);
-    sendData(false);
+    dynamic_cast<TcpPacedConnection*>(conn)->doRetransmit();
 }
 
 } // namespace tcp
