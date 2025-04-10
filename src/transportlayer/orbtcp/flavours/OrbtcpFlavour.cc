@@ -205,7 +205,8 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
     TcpTahoeRenoFamily::receivedDuplicateAck();
 
     bool isHighRxtLost = dynamic_cast<TcpPacedConnection*>(conn)->checkIsLost(state->snd_una+state->snd_mss);
-    if (state->dupacks == state->dupthresh || isHighRxtLost) {
+    bool rackLoss = dynamic_cast<TcpPacedConnection*>(conn)->checkRackLoss();
+    if ((rackLoss && !state->lossRecovery) || state->dupacks == state->dupthresh || (isHighRxtLost && !state->lossRecovery)) {
         EV_INFO << "Reno on dupAcks == DUPTHRESH(=" << state->dupthresh << ": perform Fast Retransmit, and enter Fast Recovery:";
 
         if (state->sack_enabled) {
