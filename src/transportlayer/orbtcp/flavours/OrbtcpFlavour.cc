@@ -189,6 +189,7 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
             // (B.2) Use SetPipe () to re-calculate the number of octets still
             // in the network."
             else {
+                dynamic_cast<TcpPacedConnection*>(conn)->doRetransmit();
                 // update of scoreboard (B.1) has already be done in readHeaderOptions()
                 //conn->setPipe();
             }
@@ -518,7 +519,6 @@ simtime_t OrbtcpFlavour::getRtt()
 void OrbtcpFlavour::processRexmitTimer(TcpEventCode &event) {
     TcpPacedFamily::processRexmitTimer(event);
 
-
     conn->emit(cwndSignal, state->snd_cwnd);
 
     EV_INFO << "Begin Slow Start: resetting cwnd to " << state->snd_cwnd
@@ -526,7 +526,6 @@ void OrbtcpFlavour::processRexmitTimer(TcpEventCode &event) {
 
     state->afterRto = true;
     dynamic_cast<OrbtcpConnection*>(conn)->cancelPaceTimer();
-
     dynamic_cast<TcpPacedConnection*>(conn)->doRetransmit();
 }
 
