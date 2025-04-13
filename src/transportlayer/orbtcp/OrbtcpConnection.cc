@@ -796,12 +796,44 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
 
             emit(dupAcksSignal, state->dupacks);
 
+            if (rack_enabled)
+            {
+             uint32_t tser = state->ts_recent;
+             simtime_t rtt = dynamic_cast<TcpPacedFamily*>(tcpAlgorithm)->getRtt();
+
+             // Get information of the latest packet (cumulatively)ACKed packet and update RACK parameters
+             if (!scoreboardUpdated && rexmitQueue->findRegion(tcpHeader->getAckNo()))
+             {
+                 TcpSackRexmitQueue::Region& skbRegion = rexmitQueue->getRegion(tcpHeader->getAckNo());
+                 m_rack->updateStats(tser, skbRegion.rexmitted, skbRegion.m_lastSentTime, tcpHeader->getAckNo(), state->snd_nxt, rtt);
+             }
+             else // Get information of the latest packet (Selectively)ACKed packet and update RACK parameters
+             {
+                 uint32_t highestSacked;
+                 highestSacked = rexmitQueue->getHighestSackedSeqNum();
+                 if(rexmitQueue->findRegion(highestSacked)){
+                     TcpSackRexmitQueue::Region& skbRegion = rexmitQueue->getRegion(highestSacked);
+                     m_rack->updateStats(tser, skbRegion.rexmitted,  skbRegion.m_lastSentTime, highestSacked, state->snd_nxt, rtt);
+                 }
+             }
+
+             // Check if TCP will be exiting loss recovery
+            bool exiting = false;
+            if (state->lossRecovery && dynamic_cast<TcpPacedFamily*>(tcpAlgorithm)->getRecoveryPoint() <= tcpHeader->getAckNo())
+            {
+                 exiting = true;
+            }
+
+            m_rack->updateReoWnd(m_reorder, m_dsackSeen, state->snd_nxt, tcpHeader->getAckNo(), rexmitQueue->getTotalAmountOfSackedBytes(), 3, exiting, state->lossRecovery);
+            }
+            scoreboardUpdated = false;
             // we need to update send window even if the ACK is a dupACK, because rcv win
             // could have been changed if faulty data receiver is not respecting the "do not shrink window" rule
             updateWndInfo(tcpHeader);
 
-            if (payloadLength == 0 && fsm.getState() != TCP_S_SYN_RCVD) {
-                skbDelivered(tcpHeader->getAckNo());
+            std::list<uint32_t> skbDeliveredList = rexmitQueue->getDiscardList(tcpHeader->getAckNo());
+            for (uint32_t endSeqNo : skbDeliveredList) {
+                skbDelivered(endSeqNo);
             }
 
             uint32_t currentDelivered  = m_delivered - previousDelivered;
@@ -823,6 +855,22 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             }
 
             sendPendingData();
+
+            m_reorder = false;
+            //
+            // Update m_sndFack if possible
+            if (fack_enabled || rack_enabled)
+            {
+              if (tcpHeader->getAckNo() > m_sndFack)
+                {
+                  m_sndFack = tcpHeader->getAckNo();
+                }
+              // Packet reordering seen
+              else if (tcpHeader->getAckNo() < m_sndFack)
+                {
+                  m_reorder = true;
+                }
+            }
         }
         else {
             if (payloadLength == 0) {
@@ -870,6 +918,45 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             discardUpToSeq--; // the FIN sequence number is not real data
         }
 
+        if (rack_enabled)
+        {
+          uint32_t tser = state->ts_recent;
+          simtime_t rtt = dynamic_cast<TcpPacedFamily*>(tcpAlgorithm)->getRtt();
+
+          // Get information of the latest packet (cumulatively)ACKed packet and update RACK parameters
+          if (!scoreboardUpdated && rexmitQueue->findRegion(tcpHeader->getAckNo()))
+          {
+              TcpSackRexmitQueue::Region& skbRegion = rexmitQueue->getRegion(tcpHeader->getAckNo());
+              m_rack->updateStats(tser, skbRegion.rexmitted, skbRegion.m_lastSentTime, tcpHeader->getAckNo(), state->snd_nxt, rtt);
+          }
+          else // Get information of the latest packet (Selectively)ACKed packet and update RACK parameters
+          {
+              uint32_t highestSacked;
+              highestSacked = rexmitQueue->getHighestSackedSeqNum();
+              if(rexmitQueue->findRegion(highestSacked)){
+                  TcpSackRexmitQueue::Region& skbRegion = rexmitQueue->getRegion(highestSacked);
+                  m_rack->updateStats(tser, skbRegion.rexmitted,  skbRegion.m_lastSentTime, highestSacked, state->snd_nxt, rtt);
+              }
+          }
+
+          // Check if TCP will be exiting loss recovery
+          bool exiting = false;
+          if (state->lossRecovery && dynamic_cast<TcpPacedFamily*>(tcpAlgorithm)->getRecoveryPoint() <= tcpHeader->getAckNo())
+            {
+              exiting = true;
+            }
+
+          m_rack->updateReoWnd(m_reorder, m_dsackSeen, state->snd_nxt, old_snd_una, rexmitQueue->getTotalAmountOfSackedBytes(), 3, exiting, state->lossRecovery);
+        }
+        scoreboardUpdated = false;
+        // acked data no longer needed in send queue
+
+        // acked data no longer needed in rexmit queue
+        std::list<uint32_t> skbDeliveredList = rexmitQueue->getDiscardList(discardUpToSeq);
+        for (uint32_t endSeqNo : skbDeliveredList) {
+            skbDelivered(endSeqNo);
+        }
+
         // acked data no longer needed in send queue
         sendQueue->discardUpTo(discardUpToSeq);
         enqueueData();
@@ -905,6 +992,21 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             state->dupacks = 0;
 
             sendPendingData();
+
+            m_reorder = false;
+
+            if (fack_enabled || rack_enabled)
+            {
+              if (tcpHeader->getAckNo() > m_sndFack)
+                {
+                  m_sndFack = tcpHeader->getAckNo();
+                }
+              // Packet reordering seen
+              else if (tcpHeader->getAckNo() < m_sndFack)
+                {
+                  m_reorder = true;
+                }
+            }
 
             emit(dupAcksSignal, state->dupacks);
             emit(mDeliveredSignal, m_delivered);
