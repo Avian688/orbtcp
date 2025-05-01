@@ -92,6 +92,8 @@
   ../../inet4.5/src/inet/networklayer/common/TosTag_m.h \
   ../../inet4.5/src/inet/networklayer/common/L3AddressTag_m.h \
   ../../inet4.5/src/inet/networklayer/contract/IL3AddressType.h \
+  ../../inet4.5/src/inet/transportlayer/tcp/TcpRack.h \
+  transportlayer/orbtcp/../../../../tcpPaced/src/transportlayer/tcp/SkbInfo_m.h \
   transportlayer/orbtcp/../../../../tcpPaced/src/transportlayer/tcp/flavours/TcpPacedFamily.h \
   transportlayer/orbtcp/../../../../tcpPaced/src/transportlayer/tcp/flavours/../TcpPacedConnection.h \
   ../../inet4.5/src/inet/transportlayer/tcp/flavours/TcpTahoeRenoFamily.h \
@@ -193,6 +195,8 @@ transportlayer/orbtcp/../../../../tcpPaced/src/transportlayer/tcp/TcpPacedConnec
 ../../inet4.5/src/inet/networklayer/common/TosTag_m.h:
 ../../inet4.5/src/inet/networklayer/common/L3AddressTag_m.h:
 ../../inet4.5/src/inet/networklayer/contract/IL3AddressType.h:
+../../inet4.5/src/inet/transportlayer/tcp/TcpRack.h:
+transportlayer/orbtcp/../../../../tcpPaced/src/transportlayer/tcp/SkbInfo_m.h:
 transportlayer/orbtcp/../../../../tcpPaced/src/transportlayer/tcp/flavours/TcpPacedFamily.h:
 transportlayer/orbtcp/../../../../tcpPaced/src/transportlayer/tcp/flavours/../TcpPacedConnection.h:
 ../../inet4.5/src/inet/transportlayer/tcp/flavours/TcpTahoeRenoFamily.h:

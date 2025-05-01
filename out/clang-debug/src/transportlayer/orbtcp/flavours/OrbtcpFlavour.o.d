@@ -94,6 +94,8 @@
   transportlayer/orbtcp/flavours/../../../../../tcpPaced/src/transportlayer/tcp/TcpPacedConnection.h \
   ../../inet4.5/src/inet/transportlayer/tcp/TcpConnection.h \
   ../../inet4.5/src/inet/transportlayer/tcp/TcpConnectionState_m.h \
+  ../../inet4.5/src/inet/transportlayer/tcp/TcpRack.h \
+  transportlayer/orbtcp/flavours/../../../../../tcpPaced/src/transportlayer/tcp/SkbInfo_m.h \
   transportlayer/orbtcp/flavours/../../../../../tcpPaced/src/transportlayer/tcp/flavours/TcpPacedFamily.h \
   transportlayer/orbtcp/flavours/../../../../../tcpPaced/src/transportlayer/tcp/flavours/../TcpPacedConnection.h \
   ../../inet4.5/src/inet/transportlayer/tcp/flavours/TcpTahoeRenoFamily.h \
@@ -199,6 +201,8 @@ transportlayer/orbtcp/flavours/../OrbtcpConnection.h:
 transportlayer/orbtcp/flavours/../../../../../tcpPaced/src/transportlayer/tcp/TcpPacedConnection.h:
 ../../inet4.5/src/inet/transportlayer/tcp/TcpConnection.h:
 ../../inet4.5/src/inet/transportlayer/tcp/TcpConnectionState_m.h:
+../../inet4.5/src/inet/transportlayer/tcp/TcpRack.h:
+transportlayer/orbtcp/flavours/../../../../../tcpPaced/src/transportlayer/tcp/SkbInfo_m.h:
 transportlayer/orbtcp/flavours/../../../../../tcpPaced/src/transportlayer/tcp/flavours/TcpPacedFamily.h:
 transportlayer/orbtcp/flavours/../../../../../tcpPaced/src/transportlayer/tcp/flavours/../TcpPacedConnection.h:
 ../../inet4.5/src/inet/transportlayer/tcp/flavours/TcpTahoeRenoFamily.h:
