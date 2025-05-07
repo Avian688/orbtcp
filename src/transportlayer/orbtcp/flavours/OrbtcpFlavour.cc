@@ -144,6 +144,38 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 
     TcpTahoeRenoFamily::receivedDataAck(firstSeqAcked);
 
+
+    if (state->sack_enabled && state->lossRecovery) {
+        // RFC 3517, page 7: "Once a TCP is in the loss recovery phase the following procedure MUST
+        // be used for each arriving ACK:
+        //
+        // (A) An incoming cumulative ACK for a sequence number greater than
+        // RecoveryPoint signals the end of loss recovery and the loss
+        // recovery phase MUST be terminated.  Any information contained in
+        // the scoreboard for sequence numbers greater than the new value of
+        // HighACK SHOULD NOT be cleared when leaving the loss recovery
+        // phase."
+
+        if (seqGE(state->snd_una, state->recoveryPoint)) {
+            EV_INFO << "Loss Recovery terminated.\n";
+            state->lossRecovery = false;
+        }
+        // RFC 3517, page 7: "(B) Upon receipt of an ACK that does not cover RecoveryPoint the
+        // following actions MUST be taken:
+        // (B.1) Use Update () to record the new SACK information conveyed
+        // by the incoming ACK.
+        //
+        // (B.2) Use SetPipe () to re-calculate the number of octets still
+        // in the network."
+        else {
+            dynamic_cast<TcpPacedConnection*>(conn)->doRetransmit();
+            //sendData(false);
+            // update of scoreboard (B.1) has already be done in readHeaderOptions()
+            //conn->setPipe();
+        }
+        conn->emit(recoveryPointSignal, state->recoveryPoint);
+    }
+
     if(firstSeqAcked > state->lastUpdateSeq) {
         double uVal = measureInflight(intData);
         if(uVal > 0){
@@ -164,41 +196,11 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
         dynamic_cast<OrbtcpConnection*>(conn)->changeIntersendingTime(pace);
     }
     state->L = intData;
-
     // Check if recovery phase has ended
-    if (state->sack_enabled && state->lossRecovery) {
-            // RFC 3517, page 7: "Once a TCP is in the loss recovery phase the following procedure MUST
-            // be used for each arriving ACK:
-            //
-            // (A) An incoming cumulative ACK for a sequence number greater than
-            // RecoveryPoint signals the end of loss recovery and the loss
-            // recovery phase MUST be terminated.  Any information contained in
-            // the scoreboard for sequence numbers greater than the new value of
-            // HighACK SHOULD NOT be cleared when leaving the loss recovery
-            // phase."
+    sendData(false);
 
-            if (seqGE(state->snd_una, state->recoveryPoint)) {
-                EV_INFO << "Loss Recovery terminated.\n";
-                state->lossRecovery = false;
-            }
-            // RFC 3517, page 7: "(B) Upon receipt of an ACK that does not cover RecoveryPoint the
-            // following actions MUST be taken:
-            // (B.1) Use Update () to record the new SACK information conveyed
-            // by the incoming ACK.
-            //
-            // (B.2) Use SetPipe () to re-calculate the number of octets still
-            // in the network."
-            else {
-                dynamic_cast<TcpPacedConnection*>(conn)->doRetransmit();
-                // update of scoreboard (B.1) has already be done in readHeaderOptions()
-                //conn->setPipe();
-            }
-            conn->emit(recoveryPointSignal, state->recoveryPoint);
-        }
-        sendData(false);
-
-        conn->emit(sndUnaSignal, state->snd_una);
-        conn->emit(sndMaxSignal, state->snd_max);
+    conn->emit(sndUnaSignal, state->snd_una);
+    conn->emit(sndMaxSignal, state->snd_max);
 }
 
 void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData)
@@ -238,8 +240,8 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
                 //std::cout << "\n Entering Loss recovery - dup acks > dupthresh at simTime: " << simTime().dbl() << endl;
                 state->lossRecovery = true;
                 EV_DETAIL << " recoveryPoint=" << state->recoveryPoint;
-
                 dynamic_cast<TcpPacedConnection*>(conn)->doRetransmit();
+                //sendData(false);
             }
         }
 
@@ -249,7 +251,6 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
 
         // Fast Retransmission: retransmit missing segment without waiting
         // for the REXMIT timer to expire
-        sendData(false);
         // Do not restart REXMIT timer.
         // Note: Restart of REXMIT timer on retransmission is not part of RFC 2581, however optional in RFC 3517 if sent during recovery.
         // Resetting the REXMIT timer is discussed in RFC 2582/3782 (NewReno) and RFC 2988.
@@ -262,50 +263,13 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
         }
 
     }
-    else if (state->dupacks > state->dupthresh) {
-        //
-        // Reno: For each additional duplicate ACK received, increment cwnd by SMSS.
-        // This artificially inflates the congestion window in order to reflect the
-        // additional segment that has left the network
-        //
-        //state->snd_cwnd += state->snd_mss;
-        //state->snd_cwnd += state->dupacks * state->snd_mss;
-        EV_DETAIL << "Reno on dupAcks > DUPTHRESH(=" << state->dupthresh << ": Fast Recovery: inflating cwnd by SMSS, new cwnd=" << state->snd_cwnd << "\n";
 
-        conn->emit(cwndSignal, state->snd_cwnd);
-
-        // Note: Steps (A) - (C) of RFC 3517, page 7 ("Once a TCP is in the loss recovery phase the following procedure MUST be used for each arriving ACK")
-        // should not be used here!
-
-        // RFC 3517, pages 7 and 8: "5.1 Retransmission Timeouts
-        // (...)
-        // If there are segments missing from the receiver's buffer following
-        // processing of the retransmitted segment, the corresponding ACK will
-        // contain SACK information.  In this case, a TCP sender SHOULD use this
-        // SACK information when determining what data should be sent in each
-        // segment of the slow start.  The exact algorithm for this selection is
-        // not specified in this document (specifically NextSeg () is
-        // inappropriate during slow start after an RTO).  A relatively
-        // straightforward approach to "filling in" the sequence space reported
-        // as missing should be a reasonable approach."
+    double uVal = measureInflight(intData);
+    if(uVal > 0){
+        state->snd_cwnd = computeWnd(uVal, false);
     }
+    conn->emit(cwndSignal, state->snd_cwnd);
 
-    if(firstSeqAcked > state->lastUpdateSeq) {
-        //std::cout << "\n UPDATING CWND GIVEN DUP ACK" << endl;
-        double uVal = measureInflight(intData);
-        if(uVal > 0){
-            state->snd_cwnd = computeWnd(uVal, true);
-        }
-        conn->emit(cwndSignal, state->snd_cwnd);
-        state->lastUpdateSeq = state->snd_nxt;
-    }
-    else {
-        double uVal = measureInflight(intData);
-        if(uVal > 0){
-            state->snd_cwnd = computeWnd(uVal, false);
-        }
-        conn->emit(cwndSignal, state->snd_cwnd);
-    }
     state->L = intData;
 
     if(state->snd_cwnd > 0){
@@ -526,7 +490,7 @@ void OrbtcpFlavour::processRexmitTimer(TcpEventCode &event) {
 
     state->afterRto = true;
     dynamic_cast<OrbtcpConnection*>(conn)->cancelPaceTimer();
-    dynamic_cast<TcpPacedConnection*>(conn)->doRetransmit();
+    sendData(false);
 }
 
 } // namespace tcp

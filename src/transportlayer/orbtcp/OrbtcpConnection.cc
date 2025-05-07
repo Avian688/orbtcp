@@ -742,7 +742,6 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
     uint64_t previousDelivered = m_delivered;  //RATE SAMPLER SPECIFIC STUFF
     uint32_t previousLost = m_bytesLoss; //TODO Create Sack method to get exact amount of lost packets
     uint32_t priorInFlight = m_bytesInFlight;//get current BytesInFlight somehow
-
     int payloadLength = tcpSegment->getByteLength() - B(tcpHeader->getHeaderLength()).get();
 
     // ECN
@@ -796,6 +795,8 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
 
             emit(dupAcksSignal, state->dupacks);
 
+            // we need to update send window even if the ACK is a dupACK, because rcv win
+            // could have been changed if faulty data receiver is not respecting the "do not shrink window" rule
             if (rack_enabled)
             {
              uint32_t tser = state->ts_recent;
@@ -830,7 +831,6 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             // we need to update send window even if the ACK is a dupACK, because rcv win
             // could have been changed if faulty data receiver is not respecting the "do not shrink window" rule
             updateWndInfo(tcpHeader);
-
             std::list<uint32_t> skbDeliveredList = rexmitQueue->getDiscardList(tcpHeader->getAckNo());
             for (uint32_t endSeqNo : skbDeliveredList) {
                 skbDelivered(endSeqNo);
@@ -853,7 +853,7 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             else{
                 tcpAlgorithm->receivedDuplicateAck();
             }
-
+            isRetransDataAcked = false;
             sendPendingData();
 
             m_reorder = false;
@@ -955,6 +955,11 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
         std::list<uint32_t> skbDeliveredList = rexmitQueue->getDiscardList(discardUpToSeq);
         for (uint32_t endSeqNo : skbDeliveredList) {
             skbDelivered(endSeqNo);
+            if(state->lossRecovery){
+                if(rexmitQueue->isRetransmittedDataAcked(endSeqNo)){
+                    isRetransDataAcked = true;
+                }
+            }
         }
 
         // acked data no longer needed in send queue
@@ -988,6 +993,7 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             else{ //D-SACK
                 tcpAlgorithm->receivedDataAck(old_snd_una);
             }
+            isRetransDataAcked = false;
             // in the receivedDataAck we need the old value
             state->dupacks = 0;
 
@@ -1084,7 +1090,6 @@ void OrbtcpConnection::sendIntAck(IntDataVec intData)
 
 uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
 {
-    updateInFlight();
     // FIXME check it: where is the right place for the next code (sacked/rexmitted)
     if (state->sack_enabled && state->afterRto) {
         // check rexmitQ and try to forward snd_nxt before sending new data
