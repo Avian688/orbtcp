@@ -246,10 +246,12 @@ Packet *IntQueue::pullPacket(cGate *gate)
 
     if(ipv4Header->getProtocolId() == 6){
         auto tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
-        txBytes += packet->getByteLength();
-        cSimpleModule::emit(txBytesSignal, txBytes);
-        if(packet->getDataLength() > b(0)) { //Data Packet
+        if(packet->getByteLength() > 0) { //Data Packet
             IntMetaData* intData = tcpHeader->addTagIfAbsent<IntTag>()->getIntDataForUpdate().back();
+            //if(!tcpHeader->getTag<IntTag>()->getRetrans()){
+            txBytes += packet->getByteLength();
+            //}
+            cSimpleModule::emit(txBytesSignal, txBytes);
             intData->setAverageRtt(avgRtt.dbl());
             intData->setNumOfFlows(numbOfFlows);
             intData->setNumOfFlowsInInitialPhase(numOfFlowsInInitialPhase);

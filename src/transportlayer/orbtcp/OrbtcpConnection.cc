@@ -990,7 +990,7 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
                 IntDataVec intDataNew = tcpHeader->getTag<IntTag>()->getIntData();
                 dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->receivedDataAck(old_snd_una, tcpHeader->getTag<IntTag>()->getIntData());
             }
-            else{ //D-SACK
+            else{
                 tcpAlgorithm->receivedDataAck(old_snd_una);
             }
             isRetransDataAcked = false;
@@ -1178,6 +1178,7 @@ uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
     tcpHeader->addTagIfAbsent<IntTag>()->setRtt(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getRtt());
     tcpHeader->addTagIfAbsent<IntTag>()->setCwnd(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getCwnd());
     tcpHeader->addTagIfAbsent<IntTag>()->setInitialPhase(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getInitialPhase());
+    tcpHeader->addTagIfAbsent<IntTag>()->setRetrans(rexmitQueue->isRetransmitted(state->snd_nxt));
 
     calculateAppLimited();
 

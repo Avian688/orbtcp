@@ -35,4 +35,5 @@ class IntTag extends TagBase
     simtime_t rtt;
     unsigned int cwnd;
 	bool initialPhase = true;
+	bool retrans = false;
 }

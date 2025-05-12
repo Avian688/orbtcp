@@ -13,8 +13,8 @@
 // along with this program.  If not, see http://www.gnu.org/licenses/.
 // 
 
-#ifndef TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPFLAVOUR_H_
-#define TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPFLAVOUR_H_
+#ifndef TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPSEQFLAVOUR_H_
+#define TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPSEQFLAVOUR_H_
 
 #include "../../../common/IntTag_m.h"
 #include "../OrbtcpConnection.h"
@@ -31,7 +31,7 @@ typedef OrbtcpFamilyStateVariables OrbtcpStateVariables;
 /**
  * Implements OrbTCP.
  */
-class OrbtcpFlavour : public OrbtcpFamily
+class OrbtcpSeqFlavour : public OrbtcpFamily
 {
   protected:
     OrbtcpStateVariables *& state;
@@ -58,9 +58,6 @@ class OrbtcpFlavour : public OrbtcpFamily
     simtime_t rtt;
     simtime_t estimatedRtt;
 
-    cMessage *reactTimer;
-    bool updateWindow;
-
     std::vector<bool> pathId;
 
     bool initPackets;
@@ -77,9 +74,7 @@ class OrbtcpFlavour : public OrbtcpFamily
 
   public:
     /** Constructor */
-    OrbtcpFlavour();
-
-    ~OrbtcpFlavour();
+    OrbtcpSeqFlavour();
 
     virtual void established(bool active) override;
 
@@ -98,8 +93,6 @@ class OrbtcpFlavour : public OrbtcpFamily
     /** Redefine what should happen when dupAck was received, to add congestion window management */
 
     virtual void receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData) override;
-
-    virtual void processTimer(cMessage *timer, TcpEventCode& event) override;
 
     };
 

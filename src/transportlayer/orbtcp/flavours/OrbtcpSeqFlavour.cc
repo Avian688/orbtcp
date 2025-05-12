@@ -7,7 +7,7 @@
 #include <algorithm> // min,max
 
 #include "inet/transportlayer/tcp/Tcp.h"
-#include "OrbtcpFlavour.h"
+#include "OrbtcpSeqFlavour.h"
 
 namespace inet {
 namespace tcp {
@@ -15,40 +15,35 @@ namespace tcp {
 #define MIN_REXMIT_TIMEOUT     0.2   // 1s
 #define MAX_REXMIT_TIMEOUT     240   // 2 * MSL (RFC 1122)
 
-Register_Class(OrbtcpFlavour);
+Register_Class(OrbtcpSeqFlavour);
 
-simsignal_t OrbtcpFlavour::txRateSignal = cComponent::registerSignal("txRate");
-simsignal_t OrbtcpFlavour::tauSignal = cComponent::registerSignal("tau");
-simsignal_t OrbtcpFlavour::uSignal = cComponent::registerSignal("u");
-simsignal_t OrbtcpFlavour::USignal = cComponent::registerSignal("U");
-simsignal_t OrbtcpFlavour::additiveIncreaseSignal = cComponent::registerSignal("additiveIncrease");
-simsignal_t OrbtcpFlavour::sharingFlowsSignal = cComponent::registerSignal("sharingFlows");
-simsignal_t OrbtcpFlavour::bottleneckBandwidthSignal = cComponent::registerSignal("bottleneckBandwidth");
-simsignal_t OrbtcpFlavour::avgRttSignal = cComponent::registerSignal("avgRtt");
-simsignal_t OrbtcpFlavour::queueingDelaySignal = cComponent::registerSignal("queueingDelay");
-simsignal_t OrbtcpFlavour::estimatedRttSignal = cComponent::registerSignal("estimatedRtt");
-simsignal_t OrbtcpFlavour::avgEstimatedRttSignal = cComponent::registerSignal("avgEstimatedRtt");
-simsignal_t OrbtcpFlavour::alphaSignal = cComponent::registerSignal("alpha");
-simsignal_t OrbtcpFlavour::measuringInflightSignal = cComponent::registerSignal("measuringInflight");
+simsignal_t OrbtcpSeqFlavour::txRateSignal = cComponent::registerSignal("txRate");
+simsignal_t OrbtcpSeqFlavour::tauSignal = cComponent::registerSignal("tau");
+simsignal_t OrbtcpSeqFlavour::uSignal = cComponent::registerSignal("u");
+simsignal_t OrbtcpSeqFlavour::USignal = cComponent::registerSignal("U");
+simsignal_t OrbtcpSeqFlavour::additiveIncreaseSignal = cComponent::registerSignal("additiveIncrease");
+simsignal_t OrbtcpSeqFlavour::sharingFlowsSignal = cComponent::registerSignal("sharingFlows");
+simsignal_t OrbtcpSeqFlavour::bottleneckBandwidthSignal = cComponent::registerSignal("bottleneckBandwidth");
+simsignal_t OrbtcpSeqFlavour::avgRttSignal = cComponent::registerSignal("avgRtt");
+simsignal_t OrbtcpSeqFlavour::queueingDelaySignal = cComponent::registerSignal("queueingDelay");
+simsignal_t OrbtcpSeqFlavour::estimatedRttSignal = cComponent::registerSignal("estimatedRtt");
+simsignal_t OrbtcpSeqFlavour::avgEstimatedRttSignal = cComponent::registerSignal("avgEstimatedRtt");
+simsignal_t OrbtcpSeqFlavour::alphaSignal = cComponent::registerSignal("alpha");
+simsignal_t OrbtcpSeqFlavour::measuringInflightSignal = cComponent::registerSignal("measuringInflight");
 
-simsignal_t OrbtcpFlavour::testRttSignal = cComponent::registerSignal("testRtt");
+simsignal_t OrbtcpSeqFlavour::testRttSignal = cComponent::registerSignal("testRtt");
 
-simsignal_t OrbtcpFlavour::sndUnaSignal = cComponent::registerSignal("sndUna");
-simsignal_t OrbtcpFlavour::sndMaxSignal = cComponent::registerSignal("sndMax");
+simsignal_t OrbtcpSeqFlavour::sndUnaSignal = cComponent::registerSignal("sndUna");
+simsignal_t OrbtcpSeqFlavour::sndMaxSignal = cComponent::registerSignal("sndMax");
 
-simsignal_t OrbtcpFlavour::recoveryPointSignal = cComponent::registerSignal("recoveryPoint");
+simsignal_t OrbtcpSeqFlavour::recoveryPointSignal = cComponent::registerSignal("recoveryPoint");
 
-OrbtcpFlavour::OrbtcpFlavour() : OrbtcpFamily(),
+OrbtcpSeqFlavour::OrbtcpSeqFlavour() : OrbtcpFamily(),
     state((OrbtcpStateVariables *&)TcpAlgorithm::state)
 {
 }
 
-OrbtcpFlavour::~OrbtcpFlavour() {
-    cancelEvent(reactTimer);
-    delete reactTimer;
-}
-
-void OrbtcpFlavour::initialize()
+void OrbtcpSeqFlavour::initialize()
 {
     OrbtcpFamily::initialize();
     state->B = conn->getTcpMain()->par("bandwidth");
@@ -69,11 +64,9 @@ void OrbtcpFlavour::initialize()
     else{
         state->useHpccAlpha = true;
     }
-    reactTimer = new cMessage("React Timer");
-    updateWindow = true;
 }
 
-void OrbtcpFlavour::established(bool active)
+void OrbtcpSeqFlavour::established(bool active)
 {
     //state->snd_cwnd = state->B * state->T.dbl();
     state->snd_cwnd = 7300; //5 packets
@@ -90,7 +83,7 @@ void OrbtcpFlavour::established(bool active)
     }
 }
 
-void OrbtcpFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAcked)
+void OrbtcpSeqFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAcked)
 {
     //
     // Jacobson's algorithm for estimating RTT and adaptively setting RTO.
@@ -144,7 +137,7 @@ void OrbtcpFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAcked)
     conn->emit(rtoSignal, rto);
 }
 
-void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
+void OrbtcpSeqFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
     EV_INFO << "\nORBTCPInfo ___________________________________________" << endl;
     EV_INFO << "\nORBTCPInfo - Received Data Ack" << endl;
@@ -183,31 +176,37 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
         conn->emit(recoveryPointSignal, state->recoveryPoint);
     }
 
-    double uVal = measureInflight(intData);
-    if(uVal > 0) state->snd_cwnd = computeWnd(uVal, updateWindow);
-
-    state->L = intData;
-
-    conn->emit(cwndSignal, state->snd_cwnd);
-    state->lastUpdateSeq = state->snd_nxt;
-
+    if(firstSeqAcked > state->lastUpdateSeq) {
+        double uVal = measureInflight(intData);
+        if(uVal > 0){
+            state->snd_cwnd = computeWnd(uVal, true);
+        }
+        conn->emit(cwndSignal, state->snd_cwnd);
+        state->lastUpdateSeq = state->snd_nxt;
+    }
+    else {
+        double uVal = measureInflight(intData);
+        if(uVal > 0){
+            state->snd_cwnd = computeWnd(uVal, false);
+        }
+        conn->emit(cwndSignal, state->snd_cwnd);
+    }
     if(state->snd_cwnd > 0){
         double pace = state->srtt.dbl()/((double) (state->snd_cwnd*1.2)/(double)state->snd_mss);
         dynamic_cast<OrbtcpConnection*>(conn)->changeIntersendingTime(pace);
     }
+    state->L = intData;
     // Check if recovery phase has ended
     sendData(false);
-
-    if(!reactTimer->isScheduled()){
-        conn->scheduleAt(simTime() + rtt.dbl(), reactTimer);
-    }
 
     conn->emit(sndUnaSignal, state->snd_una);
     conn->emit(sndMaxSignal, state->snd_max);
 }
 
-void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData)
+void OrbtcpSeqFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
+    TcpTahoeRenoFamily::receivedDuplicateAck();
+
     bool isHighRxtLost = dynamic_cast<TcpPacedConnection*>(conn)->checkIsLost(state->snd_una+state->snd_mss);
     bool rackLoss = dynamic_cast<TcpPacedConnection*>(conn)->checkRackLoss();
     if ((rackLoss && !state->lossRecovery) || state->dupacks == state->dupthresh || (isHighRxtLost && !state->lossRecovery)) {
@@ -234,7 +233,7 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
             // recovery phase (as described in section 5) MUST NOT be initiated
             // until HighACK is greater than or equal to the new value of
             // RecoveryPoint."
-            if (state->recoveryPoint == 0 || seqGE(state->snd_una, state->recoveryPoint)) { // HighACK = snd_una
+            if ((state->recoveryPoint == 0 || seqGE(state->snd_una, state->recoveryPoint)) && !state->lossRecovery) { // HighACK = snd_una
                 state->recoveryPoint = state->snd_max; // HighData = snd_max
                 dynamic_cast<TcpPacedConnection*>(conn)->setSackedHeadLost();
                 dynamic_cast<TcpPacedConnection*>(conn)->updateInFlight();
@@ -265,11 +264,25 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
 
     }
 
-    double uVal = measureInflight(intData);
-    if(uVal > 0) state->snd_cwnd = computeWnd(uVal, updateWindow);
+    if(firstSeqAcked > state->lastUpdateSeq) {
+        double uVal = measureInflight(intData);
+        if(uVal > 0){
+            state->snd_cwnd = computeWnd(uVal, true);
+        }
+        conn->emit(cwndSignal, state->snd_cwnd);
+        state->lastUpdateSeq = state->snd_nxt;
+    }
+    else {
+        double uVal = measureInflight(intData);
+        if(uVal > 0){
+            state->snd_cwnd = computeWnd(uVal, false);
+        }
+        conn->emit(cwndSignal, state->snd_cwnd);
+    }
 
     conn->emit(cwndSignal, state->snd_cwnd);
-    state->lastUpdateSeq = state->snd_nxt;
+
+    state->L = intData;
 
     if(state->snd_cwnd > 0){
         double pace = state->srtt.dbl()/((double) (state->snd_cwnd*1.2)/(double)state->snd_mss);
@@ -277,16 +290,10 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
     }
 
     sendData(false);
-
-    if(!reactTimer->isScheduled()){
-        conn->scheduleAt(simTime() + rtt.dbl(), reactTimer);
-    }
 }
 
-double OrbtcpFlavour::measureInflight(IntDataVec intData)
+double OrbtcpSeqFlavour::measureInflight(IntDataVec intData)
 {
-    TcpPacedConnection::RateSample rs = dynamic_cast<TcpPacedConnection*>(conn)->getRateSample();
-
     double u = 0;
     double tau;
     double bottleneckAverageRtt;
@@ -330,7 +337,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
             if(!initPackets){
                 //std::bitset<1> b = (a1 ^= a2);
                 totalQueueingDelay +=(double)intDataEntry->getRxQlen()/(double)intDataEntry->getB();
-                //txRate is bytes observed at router between previous and current ACK packet subtracted from the timestamp of the previous and current ack. Equals estimated rate.
+                //txRate is bytes observed at router between prev and current ACK packet subtracted from the timestamp of the prev and current ack. Equals estimated rate.
                 double hopTxRate = (intDataEntry->getTxBytes() - state->L.at(i)->getTxBytes())/(intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl());
                 uPrime = (intDataEntry->getQLen())/(intDataEntry->getB()*intDataEntry->getAverageRtt())+(hopTxRate/intDataEntry->getB());
                 if(intDataEntry->getTs().dbl() < state->L.at(i)->getTs().dbl()) {
@@ -402,13 +409,12 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
         pathId = currPathId;
     }
     else if(pathId != currPathId){
-        updateWindow = true;
         pathId = currPathId;
         return state->u;
     }
 
     if(bottleneckIsPastAck){
-        return 0;
+        return state->u;
     }
 
     state->sharingFlows = bottleneckSharingFlows;
@@ -420,6 +426,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
 
     conn->emit(queueingDelaySignal, state->queueingDelay);
     conn->emit(avgEstimatedRttSignal, bottleneckAverageRtt);
+    conn->emit(txRateSignal, bottleneckTxRate);
     conn->emit(uSignal, u);
     conn->emit(tauSignal, tau);
     conn->emit(sharingFlowsSignal, state->sharingFlows);
@@ -436,7 +443,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     conn->emit(alphaSignal, state->alpha);
     conn->emit(USignal, state->u);
 
-    state->ssthresh = ((((bottleneckBandwidth)/state->sharingFlows) * estimatedRtt.dbl()) * state->eta);
+    state->ssthresh = ((((bottleneckBandwidth)/state->sharingFlows) * estimatedRtt.dbl()) * 0.95);
     if(!state->initialPhase || state->snd_cwnd > state->ssthresh){ //slow start - more aggressive till max allowed share is reached
         state->additiveIncrease = ((((bottleneckBandwidth)/state->sharingFlows) * rtt.dbl()) * state->additiveIncreasePercent);
         state->ssthresh = 0;
@@ -459,7 +466,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     return state->u;
 }
 
-uint32_t OrbtcpFlavour::computeWnd(double u, bool updateWc)
+uint32_t OrbtcpSeqFlavour::computeWnd(double u, bool updateWc)
 {
     uint32_t targetW;
     if(u >= state->eta) {
@@ -470,25 +477,22 @@ uint32_t OrbtcpFlavour::computeWnd(double u, bool updateWc)
     }
 
     if(updateWc) {
-        updateWindow = false;
         state->prevWnd = targetW;
-        conn->rescheduleAt(simTime() + state->srtt.dbl(), reactTimer);
-        conn->emit(txRateSignal, state->txRate);
     }
     return targetW;
 }
 
-size_t OrbtcpFlavour::getConnId()
+size_t OrbtcpSeqFlavour::getConnId()
 {
     return connId;
 }
 
-simtime_t OrbtcpFlavour::getRtt()
+simtime_t OrbtcpSeqFlavour::getRtt()
 {
     return estimatedRtt;
 }
 
-void OrbtcpFlavour::processRexmitTimer(TcpEventCode &event) {
+void OrbtcpSeqFlavour::processRexmitTimer(TcpEventCode &event) {
     TcpPacedFamily::processRexmitTimer(event);
 
     conn->emit(cwndSignal, state->snd_cwnd);
@@ -500,24 +504,6 @@ void OrbtcpFlavour::processRexmitTimer(TcpEventCode &event) {
     dynamic_cast<OrbtcpConnection*>(conn)->cancelPaceTimer();
     sendData(false);
 }
-
-void OrbtcpFlavour::processTimer(cMessage *timer, TcpEventCode& event)
-{
-    if(timer == reactTimer){
-        updateWindow = true;
-    }
-    else if (timer == rexmitTimer)
-        processRexmitTimer(event);
-    else if (timer == persistTimer)
-        processPersistTimer(event);
-    else if (timer == delayedAckTimer)
-        processDelayedAckTimer(event);
-    else if (timer == keepAliveTimer)
-        processKeepAliveTimer(event);
-    else
-        throw cRuntimeError(timer, "unrecognized timer");
-}
-
 
 } // namespace tcp
 } // namespace inet
