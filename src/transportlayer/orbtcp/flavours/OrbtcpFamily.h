@@ -42,6 +42,8 @@ class OrbtcpFamily : public TcpPacedFamily
 
     virtual simtime_t getRtt();
 
+    virtual simtime_t getEstimatedRtt();
+
     virtual size_t getConnId();
 
     virtual bool getInitialPhase();

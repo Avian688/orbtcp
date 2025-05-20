@@ -53,6 +53,7 @@ class OrbtcpFlavour : public OrbtcpFamily
     static simsignal_t recoveryPointSignal;
     static simsignal_t sndUnaSignal;
     static simsignal_t sndMaxSignal;
+    static simsignal_t txBytesSignal;
 
     size_t connId;
     simtime_t rtt;
@@ -94,6 +95,8 @@ class OrbtcpFlavour : public OrbtcpFamily
     virtual size_t getConnId() override;
 
     virtual simtime_t getRtt() override;
+
+    virtual simtime_t getEstimatedRtt() override;
 
     /** Redefine what should happen when dupAck was received, to add congestion window management */
 

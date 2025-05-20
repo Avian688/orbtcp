@@ -84,10 +84,15 @@ void OrbtcpFamily::receiveSeqChanged(IntDataVec intData)
 }
 
 void OrbtcpFamily::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData) {
-    TcpPacedFamily::receivedDuplicateAck();
+
 }
 
 simtime_t OrbtcpFamily::getRtt()
+{
+    return state->srtt;
+}
+
+simtime_t OrbtcpFamily::getEstimatedRtt()
 {
     return state->srtt;
 }

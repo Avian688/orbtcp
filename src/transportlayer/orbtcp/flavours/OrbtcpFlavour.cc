@@ -30,6 +30,7 @@ simsignal_t OrbtcpFlavour::estimatedRttSignal = cComponent::registerSignal("esti
 simsignal_t OrbtcpFlavour::avgEstimatedRttSignal = cComponent::registerSignal("avgEstimatedRtt");
 simsignal_t OrbtcpFlavour::alphaSignal = cComponent::registerSignal("alpha");
 simsignal_t OrbtcpFlavour::measuringInflightSignal = cComponent::registerSignal("measuringInflight");
+simsignal_t OrbtcpFlavour::txBytesSignal = cComponent::registerSignal("txBytes");
 
 simsignal_t OrbtcpFlavour::testRttSignal = cComponent::registerSignal("testRtt");
 
@@ -78,15 +79,15 @@ void OrbtcpFlavour::established(bool active)
     //state->snd_cwnd = state->B * state->T.dbl();
     state->snd_cwnd = 7300; //5 packets
     dynamic_cast<OrbtcpConnection*>(conn)->changeIntersendingTime(0.000001); //do not pace intial packets as RTT is unknown
-    state->ssthresh = 1215752192;
+    state->ssthresh = 7300;
     connId = std::hash<std::string>{}(conn->localAddr.str() + "/" + std::to_string(conn->localPort) + "/" + conn->remoteAddr.str() + "/" + std::to_string(conn->remotePort));
     initPackets = true;
     EV_DETAIL << "OrbTCP initial CWND is set to " << state->snd_cwnd << "\n";
     if (active) {
         // finish connection setup with ACK (possibly piggybacked on data)
         EV_INFO << "Completing connection setup by sending ACK (possibly piggybacked on data)\n";
-        if (!sendData(false)) // FIXME - This condition is never true because the buffer is empty (at this time) therefore the first ACK is never piggyback on data
-            conn->sendAck();
+        sendData(false);
+        conn->sendAck();
     }
 }
 
@@ -103,7 +104,7 @@ void OrbtcpFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAcked)
     const double g = 0.125; // 1 / 8; (1 - alpha) where alpha == 7 / 8;
     simtime_t newRTT = tAcked - tSent;
 
-    if(state->srtt == 1){
+    if(state->srtt == 0){
         state->srtt = newRTT;
     }
 
@@ -146,13 +147,10 @@ void OrbtcpFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAcked)
 
 void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
+    TcpTahoeRenoFamily::receivedDataAck(firstSeqAcked);
     EV_INFO << "\nORBTCPInfo ___________________________________________" << endl;
     EV_INFO << "\nORBTCPInfo - Received Data Ack" << endl;
-
-    TcpTahoeRenoFamily::receivedDataAck(firstSeqAcked);
-
-
-    if (state->sack_enabled && state->lossRecovery) {
+    if (state->lossRecovery && state->sack_enabled) {
         // RFC 3517, page 7: "Once a TCP is in the loss recovery phase the following procedure MUST
         // be used for each arriving ACK:
         //
@@ -184,22 +182,23 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
     }
 
     double uVal = measureInflight(intData);
-    if(uVal > 0) state->snd_cwnd = computeWnd(uVal, updateWindow);
-
-    state->L = intData;
-
+    if(uVal > 0) {
+        state->snd_cwnd = computeWnd(uVal, updateWindow);
+        state->L = intData;
+    }
     conn->emit(cwndSignal, state->snd_cwnd);
-    state->lastUpdateSeq = state->snd_nxt;
 
     if(state->snd_cwnd > 0){
-        double pace = state->srtt.dbl()/((double) (state->snd_cwnd*1.2)/(double)state->snd_mss);
+        uint32_t maxWindow = std::max(state->snd_cwnd, dynamic_cast<TcpPacedConnection*>(conn)->getBytesInFlight());
+        uint32_t nominalBandwidth = (maxWindow / state->srtt.dbl());
+        double pace = 1/((1.2 *(double)nominalBandwidth)/(double)state->snd_mss);
         dynamic_cast<OrbtcpConnection*>(conn)->changeIntersendingTime(pace);
     }
     // Check if recovery phase has ended
     sendData(false);
 
     if(!reactTimer->isScheduled()){
-        conn->scheduleAt(simTime() + rtt.dbl(), reactTimer);
+        conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
     }
 
     conn->emit(sndUnaSignal, state->snd_una);
@@ -236,19 +235,17 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
             // RecoveryPoint."
             if (state->recoveryPoint == 0 || seqGE(state->snd_una, state->recoveryPoint)) { // HighACK = snd_una
                 state->recoveryPoint = state->snd_max; // HighData = snd_max
+                state->lossRecovery = true;
                 dynamic_cast<TcpPacedConnection*>(conn)->setSackedHeadLost();
                 dynamic_cast<TcpPacedConnection*>(conn)->updateInFlight();
                 //std::cout << "\n Entering Loss recovery - dup acks > dupthresh at simTime: " << simTime().dbl() << endl;
-                state->lossRecovery = true;
                 EV_DETAIL << " recoveryPoint=" << state->recoveryPoint;
                 dynamic_cast<TcpPacedConnection*>(conn)->doRetransmit();
+                //conn->rescheduleAt(simTime() + state->srtt.dbl(), reactTimer);
+
                 //sendData(false);
             }
         }
-
-        conn->emit(cwndSignal, state->snd_cwnd);
-
-        EV_DETAIL << " set cwnd=" << state->snd_cwnd << ", ssthresh=" << state->ssthresh << "\n";
 
         // Fast Retransmission: retransmit missing segment without waiting
         // for the REXMIT timer to expire
@@ -264,22 +261,29 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
         }
 
     }
+    else if (state->dupacks > state->dupthresh) {
+        EV_INFO << "dupAcks > DUPTHRESH(=" << state->dupthresh << ": Fast Recovery: inflating cwnd by SMSS, new cwnd=" << state->snd_cwnd << "\n";
+    }
 
     double uVal = measureInflight(intData);
-    if(uVal > 0) state->snd_cwnd = computeWnd(uVal, updateWindow);
+    if(uVal > 0) {
+        state->snd_cwnd = computeWnd(uVal, updateWindow);
+        state->L = intData;
+    }
 
     conn->emit(cwndSignal, state->snd_cwnd);
-    state->lastUpdateSeq = state->snd_nxt;
-
+    //state->lastUpdateSeq = state->snd_nxt;
     if(state->snd_cwnd > 0){
-        double pace = state->srtt.dbl()/((double) (state->snd_cwnd*1.2)/(double)state->snd_mss);
+        uint32_t maxWindow = std::max(state->snd_cwnd, dynamic_cast<TcpPacedConnection*>(conn)->getBytesInFlight());
+        uint32_t nominalBandwidth = (maxWindow / state->srtt.dbl());
+        double pace = 1/((1.2 *(double)nominalBandwidth)/(double)state->snd_mss);
         dynamic_cast<OrbtcpConnection*>(conn)->changeIntersendingTime(pace);
     }
 
     sendData(false);
 
     if(!reactTimer->isScheduled()){
-        conn->scheduleAt(simTime() + rtt.dbl(), reactTimer);
+        conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
     }
 }
 
@@ -294,9 +298,11 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     double bottleneckTxRate;
     double totalQueueingDelay = 0;
 
+    uint32_t bottleneckTxBytes;
     double bottleneckRtt;
     double bottleneckSharingFlows;
     double bottleneckInitPhaseFlows;
+    uint32_t bottleneckQueueing;
     bool bottleneckIsPastAck = false;
     std::vector<bool> currPathId(16);
     for(int i = 0; i < intData.size(); i++){ //Start at front of queue. First item is first hop etc.
@@ -332,7 +338,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
                 totalQueueingDelay +=(double)intDataEntry->getRxQlen()/(double)intDataEntry->getB();
                 //txRate is bytes observed at router between previous and current ACK packet subtracted from the timestamp of the previous and current ack. Equals estimated rate.
                 double hopTxRate = (intDataEntry->getTxBytes() - state->L.at(i)->getTxBytes())/(intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl());
-                uPrime = (intDataEntry->getQLen())/(intDataEntry->getB()*intDataEntry->getAverageRtt())+(hopTxRate/intDataEntry->getB());
+                uPrime = (std::min(intDataEntry->getQLen(), state->L.at(i)->getQLen())/(intDataEntry->getB()*intDataEntry->getAverageRtt()))+(hopTxRate/intDataEntry->getB());
                 if(intDataEntry->getTs().dbl() < state->L.at(i)->getTs().dbl()) {
                   //std::cout << "\n CURRENT ACK HOP TIMESTAMP IS OUT OF ORDER " << endl;
                     isPastAck = true;
@@ -346,8 +352,10 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
                     bottleneckInitPhaseFlows = intDataEntry->getNumOfFlowsInInitialPhase();
                     bottleneckAverageRtt = intDataEntry->getAverageRtt();
                     bottleneckRtt = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
+                    bottleneckQueueing = (std::min(intDataEntry->getQLen(), state->L.at(i)->getQLen())/(intDataEntry->getB()*intDataEntry->getAverageRtt()));
                     bottleneckTxRate = hopTxRate;
                     bottleneckIsPastAck = isPastAck;
+                    bottleneckTxBytes = intDataEntry->getTxBytes() - state->L.at(i)->getTxBytes();
                     if(bottleneckAverageRtt <= 0){
                         bottleneckAverageRtt = estimatedRtt.dbl();
                         EV_DEBUG << "bottleneckAverageRtt is lower or equal to 0!\n";
@@ -390,6 +398,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
                 bottleneckInitPhaseFlows = intDataEntry->getNumOfFlowsInInitialPhase();
                 bottleneckAverageRtt = intDataEntry->getAverageRtt();
                 bottleneckTxRate = hopTxRate;
+                bottleneckTxBytes = intDataEntry->getTxBytes();
                 if(bottleneckAverageRtt <= 0){
                     bottleneckAverageRtt = estimatedRtt.dbl();
                     EV_DEBUG << "bottleneckAverageRtt is lower or equal to 0!\n";
@@ -403,6 +412,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     }
     else if(pathId != currPathId){
         updateWindow = true;
+        std::cout << "\n PATH CHANGED!" << endl;
         pathId = currPathId;
         return state->u;
     }
@@ -423,6 +433,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     conn->emit(uSignal, u);
     conn->emit(tauSignal, tau);
     conn->emit(sharingFlowsSignal, state->sharingFlows);
+    conn->emit(txBytesSignal, bottleneckTxBytes);
 
     if(state->useHpccAlpha){
         state->alpha = tau/bottleneckAverageRtt;
@@ -472,9 +483,9 @@ uint32_t OrbtcpFlavour::computeWnd(double u, bool updateWc)
     if(updateWc) {
         updateWindow = false;
         state->prevWnd = targetW;
-        conn->rescheduleAt(simTime() + state->srtt.dbl(), reactTimer);
         conn->emit(txRateSignal, state->txRate);
     }
+
     return targetW;
 }
 
@@ -485,13 +496,16 @@ size_t OrbtcpFlavour::getConnId()
 
 simtime_t OrbtcpFlavour::getRtt()
 {
+    return state->srtt;
+}
+
+simtime_t OrbtcpFlavour::getEstimatedRtt()
+{
     return estimatedRtt;
 }
 
 void OrbtcpFlavour::processRexmitTimer(TcpEventCode &event) {
     TcpPacedFamily::processRexmitTimer(event);
-
-    conn->emit(cwndSignal, state->snd_cwnd);
 
     EV_INFO << "Begin Slow Start: resetting cwnd to " << state->snd_cwnd
                    << ", ssthresh=" << state->ssthresh << "\n";
@@ -505,6 +519,7 @@ void OrbtcpFlavour::processTimer(cMessage *timer, TcpEventCode& event)
 {
     if(timer == reactTimer){
         updateWindow = true;
+        conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
     }
     else if (timer == rexmitTimer)
         processRexmitTimer(event);

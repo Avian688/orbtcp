@@ -58,53 +58,6 @@ void OrbtcpConnection::initClonedConnection(TcpConnection *listenerConn)
 
 }
 
-void OrbtcpConnection::process_SEND(TcpEventCode& event, TcpCommand *tcpCommand, cMessage *msg)
-{
-    // FIXME how to support PUSH? One option is to treat each SEND as a unit of data,
-    // and set PSH at SEND boundaries
-    Packet *packet = check_and_cast<Packet *>(msg);
-    switch (fsm.getState()) {
-        case TCP_S_INIT:
-            throw cRuntimeError(tcpMain, "Error processing command SEND: connection not open");
-
-        case TCP_S_LISTEN:
-            EV_DETAIL << "SEND command turns passive open into active open, sending initial SYN\n";
-            state->active = true;
-            selectInitialSeqNum();
-            sendSyn();
-            startSynRexmitTimer();
-            scheduleAfter(TCP_TIMEOUT_CONN_ESTAB, connEstabTimer);
-            sendQueue->enqueueAppData(packet); // queue up for later
-            EV_DETAIL << sendQueue->getBytesAvailable(state->snd_una) << " bytes in queue\n";
-            break;
-
-        case TCP_S_SYN_RCVD:
-        case TCP_S_SYN_SENT:
-            EV_DETAIL << "Queueing up data for sending later.\n";
-            sendQueue->enqueueAppData(packet); // queue up for later
-            EV_DETAIL << sendQueue->getBytesAvailable(state->snd_una) << " bytes in queue\n";
-            break;
-
-        case TCP_S_ESTABLISHED:
-        case TCP_S_CLOSE_WAIT:
-            sendQueue->enqueueAppData(packet);
-            EV_DETAIL << sendQueue->getBytesAvailable(state->snd_una) << " bytes in queue, plus "
-                      << (state->snd_max - state->snd_una) << " bytes unacknowledged\n";
-            tcpAlgorithm->sendCommandInvoked();
-            break;
-
-        case TCP_S_LAST_ACK:
-        case TCP_S_FIN_WAIT_1:
-        case TCP_S_FIN_WAIT_2:
-        case TCP_S_CLOSING:
-        case TCP_S_TIME_WAIT:
-            throw cRuntimeError(tcpMain, "Error processing command SEND: connection closing");
-    }
-
-    if ((state->sendQueueLimit > 0) && (sendQueue->getBytesAvailable(state->snd_una) > state->sendQueueLimit))
-        state->queueUpdate = false;
-}
-
 TcpEventCode OrbtcpConnection::processSegment1stThru8th(Packet *tcpSegment, const Ptr<const TcpHeader>& tcpHeader)
 {
     // Delegates additional processing of ECN to the algorithm
@@ -175,6 +128,7 @@ TcpEventCode OrbtcpConnection::processSegment1stThru8th(Packet *tcpSegment, cons
                 sendIntAck(intData);
             }
             else{
+                std::cout << "\n SHIT ACK" << endl;
                 sendAck();
             }
         }
@@ -831,6 +785,7 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             // we need to update send window even if the ACK is a dupACK, because rcv win
             // could have been changed if faulty data receiver is not respecting the "do not shrink window" rule
             updateWndInfo(tcpHeader);
+
             std::list<uint32_t> skbDeliveredList = rexmitQueue->getDiscardList(tcpHeader->getAckNo());
             for (uint32_t endSeqNo : skbDeliveredList) {
                 skbDelivered(endSeqNo);
@@ -873,13 +828,15 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             }
         }
         else {
+            // if doesn't qualify as duplicate ACK, just ignore it.
             if (payloadLength == 0) {
-                if (state->snd_una != tcpHeader->getAckNo())
+                if (state->snd_una != tcpHeader->getAckNo()){
                     EV_DETAIL << "Old ACK: ackNo < snd_una\n";
-                else if (state->snd_una == state->snd_max)
+                }
+                else if (state->snd_una == state->snd_max) {
                     EV_DETAIL << "ACK looks duplicate but we have currently no unacked data (snd_una == snd_max)\n";
+                }
             }
-
             // reset counter
             state->dupacks = 0;
 
@@ -967,8 +924,9 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
         enqueueData();
 
         // acked data no longer needed in rexmit queue
-        if (state->sack_enabled)
+        if (state->sack_enabled){
             rexmitQueue->discardUpTo(discardUpToSeq);
+        }
 
         updateWndInfo(tcpHeader);
 
@@ -1175,7 +1133,7 @@ uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
     ASSERT(tcpHeader->getHeaderLength() == tmpTcpHeader->getHeaderLength());
 
     tcpHeader->addTagIfAbsent<IntTag>()->setConnId((unsigned long)dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getConnId());
-    tcpHeader->addTagIfAbsent<IntTag>()->setRtt(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getRtt());
+    tcpHeader->addTagIfAbsent<IntTag>()->setRtt(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getEstimatedRtt());
     tcpHeader->addTagIfAbsent<IntTag>()->setCwnd(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getCwnd());
     tcpHeader->addTagIfAbsent<IntTag>()->setInitialPhase(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getInitialPhase());
     tcpHeader->addTagIfAbsent<IntTag>()->setRetrans(rexmitQueue->isRetransmitted(state->snd_nxt));

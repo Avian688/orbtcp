@@ -40,21 +40,13 @@ protected:
 
     virtual void initConnection(TcpOpenCommand *openCmd) override;
     virtual void initClonedConnection(TcpConnection *listenerConn) override;
-    virtual void process_SEND(TcpEventCode& event, TcpCommand *tcpCommand, cMessage *msg) override;
     virtual TcpConnection *cloneListeningConnection() override;
 public:
     virtual uint32_t sendSegment(uint32_t bytes) override;
 public:
     virtual void sendIntAck(IntDataVec intData);
-protected:
-    cOutVector paceValueVec;
-    cOutVector bufferedPacketsVec;
-    bool pace;
-    simtime_t paceStart;
 public:
     std::queue<Packet*> packetQueue;
-    cMessage *paceMsg;
-    simtime_t intersendingTime;
 
 };
 
