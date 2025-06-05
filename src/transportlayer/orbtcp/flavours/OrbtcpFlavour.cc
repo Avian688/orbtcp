@@ -186,6 +186,7 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
         state->snd_cwnd = computeWnd(uVal, updateWindow);
         state->L = intData;
     }
+    state->lastUpdateSeq = state->snd_nxt;
     conn->emit(cwndSignal, state->snd_cwnd);
 
     if(state->snd_cwnd > 0){

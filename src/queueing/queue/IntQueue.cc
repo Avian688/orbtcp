@@ -35,6 +35,18 @@ simsignal_t IntQueue::numOfFlowsInInitialPhaseSignal = cComponent::registerSigna
 simsignal_t IntQueue::bandwidthSignal = cComponent::registerSignal("bandwidth");
 simsignal_t IntQueue::txBytesSignal = cComponent::registerSignal("txBytes");
 
+IntQueue::~IntQueue()
+{
+    if (averageRttTimerMsg->isScheduled()) {
+            cancelEvent(averageRttTimerMsg);
+        }
+        if (bandwidthRecorderTimerMsg->isScheduled()) {
+            cancelEvent(bandwidthRecorderTimerMsg);
+        }
+        delete averageRttTimerMsg;
+        delete bandwidthRecorderTimerMsg;
+}
+
 void IntQueue::initialize(int stage)
 {
     PacketQueue::initialize(stage);
@@ -55,19 +67,6 @@ void IntQueue::initialize(int stage)
         scheduleTimer();
         scheduleBWTimer();
     }
-}
-
-void IntQueue::finish()
-{
-    if (averageRttTimerMsg->isScheduled()) {
-        cancelEvent(averageRttTimerMsg);
-    }
-    if (bandwidthRecorderTimerMsg->isScheduled()) {
-        cancelEvent(bandwidthRecorderTimerMsg);
-    }
-    delete averageRttTimerMsg;
-    delete bandwidthRecorderTimerMsg;
-
 }
 
 void IntQueue::handleMessage(cMessage *message)
@@ -156,6 +155,7 @@ void IntQueue::scheduleBWTimer()
 void IntQueue::pushPacket(Packet *packet, cGate *gate)
 {
     Enter_Method("pushPacket");
+    bool dropped = false;
     take(packet);
     cNamedObject packetPushStartedDetails("atomicOperationStarted");
     emit(packetPushStartedSignal, packet, &packetPushStartedDetails);
@@ -211,12 +211,14 @@ void IntQueue::pushPacket(Packet *packet, cGate *gate)
             auto packet = packetDropperFunction->selectPacket(this);
             EV_INFO << "Dropping packet" << EV_FIELD(packet) << EV_ENDL;
             queue.remove(packet);
+            dropped = true;
             dropPacket(packet, QUEUE_OVERFLOW);
         }
     }
     ASSERT(!isOverloaded());
     if (collector != nullptr && getNumPackets() != 0)
         collector->handleCanPullPacketChanged(outputGate->getPathEndGate());
+
     cNamedObject packetPushEndedDetails("atomicOperationEnded");
     emit(packetPushEndedSignal, nullptr, &packetPushEndedDetails);
     updateDisplayString();
@@ -233,6 +235,7 @@ Packet *IntQueue::pullPacket(cGate *gate)
     }
     else
         queue.pop();
+
     auto queueingTime = simTime() - packet->getArrivalTime();
     auto packetEvent = new PacketQueuedEvent();
     packetEvent->setQueuePacketLength(getNumPackets());

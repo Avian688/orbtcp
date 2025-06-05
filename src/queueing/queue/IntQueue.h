@@ -58,7 +58,7 @@ protected:
     virtual void scheduleTimer();
     virtual void scheduleBWTimer();
 
-    virtual void finish() override;
+    virtual ~IntQueue();
 public:
     virtual void pushPacket(Packet *packet, cGate *gate) override;
     virtual Packet *pullPacket(cGate *gate) override;
