@@ -40,7 +40,7 @@ simple IntQueue extends PacketQueue
     	@signal[txBytes];
    		@statistic[txBytes](record=vector; interpolationmode=sample-hold);
    		
-        packetCapacity = default(100);
+        packetCapacity @mutable = default(100);
         double fixedAvgRTTVal = default(0);
         dropperClass = default("inet::queueing::PacketAtCollectionEndDropper");
 }
