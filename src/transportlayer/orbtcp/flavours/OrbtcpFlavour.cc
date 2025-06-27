@@ -306,6 +306,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     uint32_t bottleneckQueueing;
     bool bottleneckIsPastAck = false;
     std::vector<bool> currPathId(16);
+
     for(int i = 0; i < intData.size(); i++){ //Start at front of queue. First item is first hop etc.
         double uPrime = 0;
         IntMetaData* intDataEntry = intData.at(i);
@@ -328,20 +329,12 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
             currPathId = tempBitArray;
 
             if(intDataEntry->getAverageRtt() > 0) {
-                initPackets = false;
-            }
-            else{
-                return 0;
-            }
-
-            if(!initPackets){
                 //std::bitset<1> b = (a1 ^= a2);
                 totalQueueingDelay +=(double)intDataEntry->getRxQlen()/(double)intDataEntry->getB();
                 //txRate is bytes observed at router between previous and current ACK packet subtracted from the timestamp of the previous and current ack. Equals estimated rate.
                 double hopTxRate = (intDataEntry->getTxBytes() - state->L.at(i)->getTxBytes())/(intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl());
                 uPrime = (std::min(intDataEntry->getQLen(), state->L.at(i)->getQLen())/(intDataEntry->getB()*intDataEntry->getAverageRtt()))+(hopTxRate/intDataEntry->getB());
                 if(intDataEntry->getTs().dbl() < state->L.at(i)->getTs().dbl()) {
-                  //std::cout << "\n CURRENT ACK HOP TIMESTAMP IS OUT OF ORDER " << endl;
                     isPastAck = true;
                 }
 
@@ -383,26 +376,21 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
             currPathId = tempBitArray;
 
             if(intDataEntry->getAverageRtt() > 0) {
-                initPackets = false;
-            }
-            else{
-                return 0;
-            }
-
-            double hopTxRate = intDataEntry->getTxBytes()/intDataEntry->getAverageRtt();
-            totalQueueingDelay +=(double)(intDataEntry->getRxQlen())/(double)intDataEntry->getB();
-            uPrime = (intDataEntry->getQLen()/(intDataEntry->getB()*intDataEntry->getAverageRtt()))+(hopTxRate/intDataEntry->getB());
-            if(uPrime > u) {
-                u = uPrime;
-                tau = intDataEntry->getTs().dbl();
-                bottleneckSharingFlows = intDataEntry->getNumOfFlows();
-                bottleneckInitPhaseFlows = intDataEntry->getNumOfFlowsInInitialPhase();
-                bottleneckAverageRtt = intDataEntry->getAverageRtt();
-                bottleneckTxRate = hopTxRate;
-                bottleneckTxBytes = intDataEntry->getTxBytes();
-                if(bottleneckAverageRtt <= 0){
-                    bottleneckAverageRtt = estimatedRtt.dbl();
-                    EV_DEBUG << "bottleneckAverageRtt is lower or equal to 0!\n";
+                double hopTxRate = intDataEntry->getTxBytes()/intDataEntry->getAverageRtt();
+                totalQueueingDelay +=(double)(intDataEntry->getRxQlen())/(double)intDataEntry->getB();
+                uPrime = (intDataEntry->getQLen()/(intDataEntry->getB()*intDataEntry->getAverageRtt()))+(hopTxRate/intDataEntry->getB());
+                if(uPrime > u) {
+                    u = uPrime;
+                    tau = intDataEntry->getTs().dbl();
+                    bottleneckSharingFlows = intDataEntry->getNumOfFlows();
+                    bottleneckInitPhaseFlows = intDataEntry->getNumOfFlowsInInitialPhase();
+                    bottleneckAverageRtt = intDataEntry->getAverageRtt();
+                    bottleneckTxRate = hopTxRate;
+                    bottleneckTxBytes = intDataEntry->getTxBytes();
+                    if(bottleneckAverageRtt <= 0){
+                        bottleneckAverageRtt = estimatedRtt.dbl();
+                        EV_DEBUG << "bottleneckAverageRtt is lower or equal to 0!\n";
+                    }
                 }
             }
         }
@@ -413,7 +401,6 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     }
     else if(pathId != currPathId){
         updateWindow = true;
-        std::cout << "\n PATH CHANGED!" << endl;
         pathId = currPathId;
         return state->u;
     }
