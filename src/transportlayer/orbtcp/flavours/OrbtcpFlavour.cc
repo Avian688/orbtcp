@@ -184,16 +184,10 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 
     double uVal = measureInflight(intData);
     if(uVal > 0) {
-        state->snd_cwnd = computeWnd(uVal, updateWindow);
+        if(!pathChanged){
+            state->snd_cwnd = computeWnd(uVal, updateWindow);
+        }
         state->L = intData;
-    }
-
-    if(updateNext){
-        //state->L = intData;
-
-        //updateWindow = true;
-        //updateNext = false;
-
     }
 
     state->lastUpdateSeq = state->snd_nxt;
@@ -278,17 +272,11 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
 
     double uVal = measureInflight(intData);
     if(uVal > 0) {
-        state->snd_cwnd = computeWnd(uVal, updateWindow);
+        if(!pathChanged){
+            state->snd_cwnd = computeWnd(uVal, updateWindow);
+        }
         state->L = intData;
     }
-
-    if(updateNext){
-        //state->L = intData;
-
-        //updateWindow = true;
-        //updateNext = false;
-    }
-
     conn->emit(cwndSignal, state->snd_cwnd);
     //state->lastUpdateSeq = state->snd_nxt;
     if(state->snd_cwnd > 0){
@@ -325,50 +313,49 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     std::vector<bool> currPathId(16);
 
     bool sharedHop = false;
-    for(int i = 0; i < intData.size(); i++){ //Start at front of queue. First item is first hop etc.
-        IntMetaData* intDataEntry = intData.at(i);
-        double uPrime = 0;
-        for(int j = 0; j < state->L.size(); j++){
-            if(intDataEntry->getHopId() == state->L.at(j)->getHopId()){ //TODO replace with check to ensure the hops are the same, maybe hopID? Look at paper/rfc
-                sharedHop = true;
-                bool isPastAck = false;
-                int hopId = intDataEntry->getHopId();
-                std::vector<bool> bitArray(16);
-                std::vector<bool> tempBitArray(16);
-                int bitSize = 16;
+    if(intData.size() == state->L.size()){
+        for(int i = 0; i < intData.size(); i++){ //Start at front of queue. First item is first hop etc.
+            IntMetaData* intDataEntry = intData.at(i);
+            double uPrime = 0;
+            sharedHop = true;
+            bool isPastAck = false;
+            int hopId = intDataEntry->getHopId();
+            std::vector<bool> bitArray(16);
+            std::vector<bool> tempBitArray(16);
+            int bitSize = 16;
 
-                for (size_t i = 0; i < bitSize; ++i) {
-                    bitArray[(bitSize-1) - i] = (hopId >> i) & 1;
-                }
+            for (size_t i = 0; i < bitSize; ++i) {
+                bitArray[(bitSize-1) - i] = (hopId >> i) & 1;
+            }
 
-                for (size_t i = 0; i < bitArray.size(); ++i) {
-                    tempBitArray[i] = currPathId[i] ^ bitArray[i];  // XOR the corresponding bits
-                }
+            for (size_t i = 0; i < bitArray.size(); ++i) {
+                tempBitArray[i] = currPathId[i] ^ bitArray[i];  // XOR the corresponding bits
+            }
 
-                currPathId = tempBitArray;
-
-                if(intDataEntry->getAverageRtt() > 0) {
+            currPathId = tempBitArray;
+            if(i < state->L.size()) {
+                if(intDataEntry->getHopId() == state->L.at(i)->getHopId() && intDataEntry->getAverageRtt() > 0) {
                     //std::bitset<1> b = (a1 ^= a2);
                     totalQueueingDelay +=(double)intDataEntry->getRxQlen()/(double)intDataEntry->getB();
                     //txRate is bytes observed at router between previous and current ACK packet subtracted from the timestamp of the previous and current ack. Equals estimated rate.
-                    double hopTxRate = (intDataEntry->getTxBytes() - state->L.at(j)->getTxBytes())/(intDataEntry->getTs().dbl() - state->L.at(j)->getTs().dbl());
-                    uPrime = (std::min(intDataEntry->getQLen(), state->L.at(j)->getQLen())/(intDataEntry->getB()*intDataEntry->getAverageRtt()))+(hopTxRate/intDataEntry->getB());
-                    if(intDataEntry->getTs().dbl() < state->L.at(j)->getTs().dbl()) {
+                    double hopTxRate = (intDataEntry->getTxBytes() - state->L.at(i)->getTxBytes())/(intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl());
+                    uPrime = (std::min(intDataEntry->getQLen(), state->L.at(i)->getQLen())/(intDataEntry->getB()*intDataEntry->getAverageRtt()))+(hopTxRate/intDataEntry->getB());
+                    if(intDataEntry->getTs().dbl() < state->L.at(i)->getTs().dbl()) {
                         isPastAck = true;
                     }
 
                     if(uPrime > u) {
                         u = uPrime;
-                        tau = intDataEntry->getTs().dbl() - state->L.at(j)->getTs().dbl();
+                        tau = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
 
                         bottleneckSharingFlows = intDataEntry->getNumOfFlows();
                         bottleneckInitPhaseFlows = intDataEntry->getNumOfFlowsInInitialPhase();
                         bottleneckAverageRtt = intDataEntry->getAverageRtt();
-                        bottleneckRtt = intDataEntry->getTs().dbl() - state->L.at(j)->getTs().dbl();
-                        bottleneckQueueing = (std::min(intDataEntry->getQLen(), state->L.at(j)->getQLen())/(intDataEntry->getB()*intDataEntry->getAverageRtt()));
+                        bottleneckRtt = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
+                        bottleneckQueueing = (std::min(intDataEntry->getQLen(), state->L.at(i)->getQLen())/(intDataEntry->getB()*intDataEntry->getAverageRtt()));
                         bottleneckTxRate = hopTxRate;
                         bottleneckIsPastAck = isPastAck;
-                        bottleneckTxBytes = intDataEntry->getTxBytes() - state->L.at(j)->getTxBytes();
+                        bottleneckTxBytes = intDataEntry->getTxBytes() - state->L.at(i)->getTxBytes();
                         if(bottleneckAverageRtt <= 0){
                             bottleneckAverageRtt = estimatedRtt.dbl();
                             EV_DEBUG << "bottleneckAverageRtt is lower or equal to 0!\n";
@@ -376,48 +363,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
                         bottleneckBandwidth = intDataEntry->getB();
                     }
                 }
-                break;
             }
-
-        }
-        if(!sharedHop){
-            std::cout << "\n NO SHARED HOP AT: " << simTime() << endl;
-
-//            int hopId = intDataEntry->getHopId();
-//            std::vector<bool> bitArray(16);
-//
-//            std::vector<bool> tempBitArray(16);
-//            int bitSize = 16;
-//
-//            for (size_t i = 0; i < bitSize; ++i) {
-//                bitArray[(bitSize-1) - i] = (hopId >> i) & 1;
-//            }
-//
-//            for (size_t i = 0; i < bitArray.size(); ++i) {
-//                tempBitArray[i] = bitArray[i] ^ currPathId[i];  // XOR the corresponding bits
-//            }
-//            currPathId = tempBitArray;
-//
-//            if(intDataEntry->getAverageRtt() > 0) {
-//                double hopTxRate = intDataEntry->getTxBytes()/intDataEntry->getAverageRtt();
-//                totalQueueingDelay +=(double)(intDataEntry->getRxQlen())/(double)intDataEntry->getB();
-//                uPrime = (intDataEntry->getQLen()/(intDataEntry->getB()*intDataEntry->getAverageRtt()))+(hopTxRate/intDataEntry->getB());
-//                if(uPrime > u) {
-//                    u = uPrime;
-//                    tau = intDataEntry->getTs().dbl();
-//                    bottleneckSharingFlows = intDataEntry->getNumOfFlows();
-//                    bottleneckInitPhaseFlows = intDataEntry->getNumOfFlowsInInitialPhase();
-//                    bottleneckAverageRtt = intDataEntry->getAverageRtt();
-//                    bottleneckTxRate = hopTxRate;
-//                    bottleneckTxBytes = intDataEntry->getTxBytes();
-//                    if(bottleneckAverageRtt <= 0){
-//                        bottleneckAverageRtt = estimatedRtt.dbl();
-//                        EV_DEBUG << "bottleneckAverageRtt is lower or equal to 0!\n";
-//                    }
-//                }
-//            }
-
-
         }
     }
 
@@ -428,10 +374,11 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     if(pathId.empty()) {
         pathId = currPathId;
     }
-    else if((pathId != currPathId) || !sharedHop){
+    else if((pathId != currPathId)){
         std::cout << "\n updating path id " << endl;
         //updateNext = true;
         pathId = currPathId;
+        pathChanged = true;
         //state->L = std::vector<IntMetaData*>(); //reset
         state->L = intData;
         return 0;
@@ -546,6 +493,7 @@ void OrbtcpFlavour::processTimer(cMessage *timer, TcpEventCode& event)
 {
     if(timer == reactTimer){
         updateWindow = true;
+        pathChanged = false;
         conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
     }
     else if (timer == rexmitTimer)

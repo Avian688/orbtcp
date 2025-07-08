@@ -62,7 +62,7 @@ class OrbtcpFlavour : public OrbtcpFamily
     cMessage *reactTimer;
     bool updateWindow;
 
-    bool updateNext;
+    bool pathChanged;
 
     std::vector<bool> pathId;
 
