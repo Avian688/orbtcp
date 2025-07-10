@@ -258,17 +258,7 @@ Packet *IntQueue::pullPacket(cGate *gate)
         auto tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
         if(packet->getByteLength() > 0) { //Data Packet
             IntMetaData* intData = tcpHeader->addTagIfAbsent<IntTag>()->getIntDataForUpdate().back();
-            //if(!tcpHeader->getTag<IntTag>()->getRetrans()){
-
-//            if(this->getFullPath() == "leoconstellation.groundStation[1].ppp[0].queue"){
-//                std::cout << "before txBytes: " << txBytes << std::endl;
-//            }
             txBytes += packet->getByteLength();
-
-//            if(this->getFullPath() == "leoconstellation.groundStation[1].ppp[0].queue"){
-//                std::cout << "after txBytes: " << txBytes << std::endl;
-//            }
-            //}
             cSimpleModule::emit(txBytesSignal, txBytes);
             intData->setAverageRtt(avgRtt.dbl());
             intData->setNumOfFlows(numbOfFlows);
@@ -278,29 +268,8 @@ Packet *IntQueue::pullPacket(cGate *gate)
             intData->setTs(simTime());
             intData->setTxBytes(txBytes);
             intData->setB(dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate()/8);
-
-//            if(this->getFullPath() == "leoconstellation.groundStation[1].ppp[9].queue"){
-//                std::cout << "=== Queue Parameter Update Debug - Int being added===" << std::endl;
-//                std::cout << "SimTime: " << simTime() << std::endl;
-//                std::cout << "isActive: " << isActive;
-//                std::cout << "txBytes: " << txBytes << std::endl;
-//                std::cout << "avgRtt.dbl(): " << avgRtt.dbl() << std::endl;
-//                std::cout << "numbOfFlows: " << numbOfFlows << std::endl;
-//                std::cout << "numOfFlowsInInitialPhase: " << numOfFlowsInInitialPhase << std::endl;
-//                std::cout << "getParentModule()->getParentModule()->getId(): "
-//                          << getParentModule()->getParentModule()->getId() << std::endl;
-//                std::cout << "queue.getByteLength(): " << queue.getByteLength() << std::endl;
-//                std::cout << "simTime(): " << simTime() << std::endl;
-//                std::cout << "dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate() / 8: "
-//                          << dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate() / 8 << std::endl;
-//                std::cout << "===================================" << std::endl;
-//            }
-
-            //tcpHeader->addTagIfAbsent<IntTag>()->getIntDataForUpdate().push_back(intData);
         }
         packet->insertAtFront(tcpHeader);
-
-
     }
     else{
         //ICMP packet transmitted - deactivate router
