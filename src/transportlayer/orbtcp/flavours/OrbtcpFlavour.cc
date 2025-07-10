@@ -344,6 +344,46 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
                         isPastAck = true;
                     }
 
+                    if(simTime() > 2200 && intDataEntry->getQLen() > 100){
+                        std::cout << "=== Pre-Assignment Debug Info ===" << std::endl;
+                        std::cout << "SimTime: " << simTime() << std::endl;
+
+                        // Raw expression values
+                        std::cout << "u (from uPrime): " << uPrime << std::endl;
+                        std::cout << "tau (intDataEntry->getTs() - state->L[i]->getTs()): "
+                                  << intDataEntry->getTs().dbl() << " - " << state->L.at(i)->getTs().dbl()
+                                  << " = " << (intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl()) << std::endl;
+
+                        std::cout << "intDataEntry->getNumOfFlows(): " << intDataEntry->getNumOfFlows() << std::endl;
+                        std::cout << "intDataEntry->getNumOfFlowsInInitialPhase(): " << intDataEntry->getNumOfFlowsInInitialPhase() << std::endl;
+                        std::cout << "intDataEntry->getAverageRtt(): " << intDataEntry->getAverageRtt() << std::endl;
+                        std::cout << "bottleneckRtt (same as tau): "
+                                  << intDataEntry->getTs().dbl() << " - " << state->L.at(i)->getTs().dbl()
+                                  << " = " << (intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl()) << std::endl;
+
+                        std::cout << "min(QLen): min(" << intDataEntry->getQLen() << ", " << state->L.at(i)->getQLen() << ")" << std::endl;
+                        std::cout << "BottleneckQueueing = min(QLen) / (B * AvgRTT) = "
+                                  << std::min(intDataEntry->getQLen(), state->L.at(i)->getQLen())
+                                  << " / (" << intDataEntry->getB() << " * " << intDataEntry->getAverageRtt() << ") = "
+                                  << (std::min(intDataEntry->getQLen(), state->L.at(i)->getQLen()) /
+                                      (intDataEntry->getB() * intDataEntry->getAverageRtt())) << std::endl;
+
+                        std::cout << "hopTxRate: " << hopTxRate << std::endl;
+                        std::cout << "isPastAck: " << std::boolalpha << isPastAck << std::endl;
+
+                        std::cout << "TxBytes Delta = intDataEntry->getTxBytes() - state->L[i]->getTxBytes(): "
+                                  << intDataEntry->getTxBytes() << " - " << state->L.at(i)->getTxBytes()
+                                  << " = " << (intDataEntry->getTxBytes() - state->L.at(i)->getTxBytes()) << std::endl;
+
+                        if (intDataEntry->getAverageRtt() <= 0) {
+                            std::cout << "bottleneckAverageRtt is <= 0! Will use estimatedRtt instead: "
+                                      << estimatedRtt.dbl() << std::endl;
+                        }
+
+                        std::cout << "intDataEntry->getB(): " << intDataEntry->getB() << std::endl;
+                        std::cout << "=============================" << std::endl;
+                    }
+
                     if(uPrime > u) {
                         u = uPrime;
                         tau = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
@@ -367,7 +407,34 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
         }
     }
 
-    if(bottleneckIsPastAck){
+    if(simTime() > 2220){
+        std::cout << "=== Debug Info ===" << std::endl;
+        std::cout << "SimTime: " << simTime() << std::endl;
+
+        // Global variables
+        std::cout << "--- Global Variables ---" << std::endl;
+        std::cout << "pathChanged: " << std::boolalpha << pathChanged << std::endl;
+        std::cout << "pathId == currPathId : " << std::boolalpha << (pathId == currPathId) << std::endl;
+        std::cout << "state->u: " << state->u << std::endl;
+        std::cout << "state->snd_cwnd: " << state->snd_cwnd << std::endl;
+
+        // Bottleneck variables
+        std::cout << "--- Bottleneck Variables ---" << std::endl;
+        std::cout << "bottleneckSharingFlows: " << bottleneckSharingFlows << std::endl;
+        std::cout << "bottleneckInitPhaseFlows: " << bottleneckInitPhaseFlows << std::endl;
+        std::cout << "bottleneckAverageRtt: " << bottleneckAverageRtt << std::endl;
+        std::cout << "bottleneckRtt: " << bottleneckRtt << std::endl;
+        std::cout << "bottleneckQueueing: " << bottleneckQueueing << std::endl;
+        std::cout << "bottleneckTxRate: " << bottleneckTxRate << std::endl;
+        std::cout << "bottleneckIsPastAck: " << std::boolalpha << bottleneckIsPastAck << std::endl;
+        std::cout << "bottleneckTxBytes: " << bottleneckTxBytes << std::endl;
+        std::cout << "bottleneckBandwidth: " << bottleneckBandwidth << std::endl;
+
+        std::cout << "=============================" << std::endl;
+    }
+
+    if(bottleneckIsPastAck || pathChanged){
+        std::cout << "\n pathChanged" << pathChanged << endl;
         return 0;
     }
 
@@ -375,7 +442,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
         pathId = currPathId;
     }
     else if((pathId != currPathId)){
-        std::cout << "\n updating path id " << endl;
+        std::cout << "\n updating path id at " << simTime() << endl;
         //updateNext = true;
         pathId = currPathId;
         pathChanged = true;
@@ -393,17 +460,6 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
 
     conn->emit(queueingDelaySignal, state->queueingDelay);
     conn->emit(avgEstimatedRttSignal, bottleneckAverageRtt);
-    if(u > 100){
-        std::cout << "BottleneckSharingFlows: " << bottleneckSharingFlows << std::endl;
-        std::cout << "BottleneckInitPhaseFlows: " << bottleneckInitPhaseFlows << std::endl;
-        std::cout << "BottleneckAverageRtt: " << bottleneckAverageRtt << std::endl;
-        std::cout << "BottleneckRtt: " << bottleneckRtt << std::endl;
-        std::cout << "BottleneckQueueing: " << bottleneckQueueing << std::endl;
-        std::cout << "BottleneckTxRate: " << bottleneckTxRate << std::endl;
-        std::cout << "BottleneckIsPastAck: " << bottleneckIsPastAck << std::endl;
-        std::cout << "BottleneckTxBytes: " << bottleneckTxBytes << std::endl;
-        //u = 10;
-    }
     conn->emit(uSignal, u);
     conn->emit(tauSignal, tau);
     conn->emit(sharingFlowsSignal, state->sharingFlows);
