@@ -13,8 +13,8 @@
 // along with this program.  If not, see http://www.gnu.org/licenses/.
 // 
 
-#ifndef TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPFLAVOUR_H_
-#define TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPFLAVOUR_H_
+#ifndef TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPNOINITFLOWSFLAVOUR_H_
+#define TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPNOINITFLOWSFLAVOUR_H_
 
 #include "../../../common/IntTag_m.h"
 #include "../OrbtcpConnection.h"
@@ -31,7 +31,7 @@ typedef OrbtcpFamilyStateVariables OrbtcpStateVariables;
 /**
  * Implements OrbTCP.
  */
-class OrbtcpFlavour : public OrbtcpFamily
+class OrbtcpNoInitFlowsFlavour : public OrbtcpFamily
 {
   protected:
     OrbtcpStateVariables *& state;
@@ -82,9 +82,9 @@ class OrbtcpFlavour : public OrbtcpFamily
 
   public:
     /** Constructor */
-    OrbtcpFlavour();
+    OrbtcpNoInitFlowsFlavour();
 
-    ~OrbtcpFlavour();
+    ~OrbtcpNoInitFlowsFlavour();
 
     virtual void established(bool active) override;
 

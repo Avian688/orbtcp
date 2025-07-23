@@ -37,6 +37,8 @@ OBJS = \
     $O/transportlayer/orbtcp/flavours/OrbtcpFlavour.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpNoAvgRTTFlavour.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpNoEstRTTFlavour.o \
+    $O/transportlayer/orbtcp/flavours/OrbtcpNoInitFlowsFlavour.o \
+    $O/transportlayer/orbtcp/flavours/OrbtcpNoSharedFlowsFlavour.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpSeqFlavour.o \
     $O/common/IntTag_m.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpFamilyState_m.o

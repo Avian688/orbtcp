@@ -64,9 +64,9 @@ void IntQueue::initialize(int stage)
         averageRttTimerMsg->setContextPointer(this);
         bandwidthRecorderTimerMsg = new cMessage("bandwidthRecorderTimerMsg");
         bandwidthRecorderTimerMsg->setContextPointer(this);
-        scheduleTimer();
-        scheduleBWTimer();
     }
+    bandwidth = 100000000;
+    cSimpleModule::emit(bandwidthSignal, bandwidth);
 }
 
 void IntQueue::handleMessage(cMessage *message)
@@ -78,6 +78,8 @@ void IntQueue::handleMessage(cMessage *message)
         processBWTimer();
     }
     else{
+        scheduleTimer();
+
         auto packet = check_and_cast<Packet *>(message);
         pushPacket(packet, packet->getArrivalGate());
     }
@@ -85,61 +87,36 @@ void IntQueue::handleMessage(cMessage *message)
 
 void IntQueue::processTimer()
 {
-    if(dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()){
-        isActive = true;
-    }
-
-    if(isActive){
-        if(sumRttSquareByCwnd > 0 && sumRttByCwnd > 0){
-            if(!dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()){
-                EV_DEBUG << "\n Channel has been deactivated!" << endl;
-                isActive = false;
-                scheduleTimer();
-                return;
-            }
-            double queueingDelay = 0;
-            if(persistentQueueSize != 2147483647){
-                queueingDelay = (persistentQueueSize / dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate()/8);
-                //cSimpleModule::emit(persistentQueueingDelaySignal, (persistentQueueSize / dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate()/8));
-            }
-            queueingDelay = (queue.getByteLength() / dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate()/8);
-            cSimpleModule::emit(persistentQueueingDelaySignal, queueingDelay);
-            if(fixedAvgRTTVal > 0){
-                avgRtt = fixedAvgRTTVal;
-            }
-            else{
-                avgRtt = SimTime(sumRttSquareByCwnd/sumRttByCwnd) - queueingDelay;
-            }
-            numbOfFlows = flowIds.size();
-            numOfFlowsInInitialPhase = initialPhaseFlowIds.size();
-            sumRttSquareByCwnd = 0;
-            sumRttByCwnd = 0;
-            changePersistentQueueSize = true;
-            flowIds.clear();
-            initialPhaseFlowIds.clear();
-            cSimpleModule::emit(avgRttSignal, avgRtt);
-            cSimpleModule::emit(numberOfFlowsSignal, numbOfFlows);
-            cSimpleModule::emit(numOfFlowsInInitialPhaseSignal, numOfFlowsInInitialPhase);
+    if(sumRttSquareByCwnd > 0 && sumRttByCwnd > 0){
+        double queueingDelay = 0;
+        if(persistentQueueSize != 2147483647){
+            queueingDelay = (persistentQueueSize / bandwidth/8);
+            //cSimpleModule::emit(persistentQueueingDelaySignal, (persistentQueueSize / dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate()/8));
         }
+        queueingDelay = (queue.getByteLength() / bandwidth/8);
+        cSimpleModule::emit(persistentQueueingDelaySignal, queueingDelay);
+        if(fixedAvgRTTVal > 0){
+            avgRtt = fixedAvgRTTVal;
+        }
+        else{
+            avgRtt = SimTime(sumRttSquareByCwnd/sumRttByCwnd);
+        }
+        numbOfFlows = flowIds.size();
+        numOfFlowsInInitialPhase = initialPhaseFlowIds.size();
+        sumRttSquareByCwnd = 0;
+        sumRttByCwnd = 0;
+        changePersistentQueueSize = true;
+        flowIds.clear();
+        initialPhaseFlowIds.clear();
+        cSimpleModule::emit(avgRttSignal, avgRtt);
+        cSimpleModule::emit(numberOfFlowsSignal, numbOfFlows);
+        cSimpleModule::emit(numOfFlowsInInitialPhaseSignal, numOfFlowsInInitialPhase);
+        scheduleTimer();
     }
-    scheduleTimer();
 }
 
 void IntQueue::processBWTimer()
 {
-    if(dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()){
-        isActive = true;
-    }
-
-    if(isActive){
-        if(!dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()){
-            EV_DEBUG << "\n Channel has been deactivated!" << endl;
-            isActive = false;
-        }
-        else{
-            cSimpleModule::emit(bandwidthSignal, dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate());
-        }
-    }
     scheduleBWTimer();
 }
 

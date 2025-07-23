@@ -32,6 +32,7 @@ simple OrbtcpConnection extends TcpPacedConnection
         @signal[avgRtt];
         @signal[queueingDelay];
         @signal[estimatedRtt];
+        @signal[smoothedEstimatedRtt];
         @signal[avgEstimatedRtt];
         @signal[alpha];
         @signal[measuringInflight];
@@ -55,6 +56,7 @@ simple OrbtcpConnection extends TcpPacedConnection
 		@statistic[avgRtt](record=vector; interpolationmode=sample-hold);
 		@statistic[queueingDelay](record=vector; interpolationmode=sample-hold);
 		@statistic[estimatedRtt](record=vector; interpolationmode=sample-hold);
+		@statistic[smoothedEstimatedRtt](record=vector; interpolationmode=sample-hold);
 		@statistic[avgEstimatedRtt](record=vector; interpolationmode=sample-hold);
 		@statistic[alpha](record=vector; interpolationmode=sample-hold);
 		@statistic[measuringInflight](record=vector; interpolationmode=sample-hold);

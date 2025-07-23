@@ -31,9 +31,10 @@ protected:
     static simsignal_t bandwidthSignal;
     static simsignal_t txBytesSignal;
 
+
     simtime_t bandwidthRecorderTimer;
     cMessage *bandwidthRecorderTimerMsg = nullptr;
-
+    int bandwidth;
     bool isActive;
     long txBytes;
     simtime_t avgRtt;

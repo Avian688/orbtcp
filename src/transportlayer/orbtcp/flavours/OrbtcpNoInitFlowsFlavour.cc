@@ -7,7 +7,7 @@
 #include <algorithm> // min,max
 
 #include "inet/transportlayer/tcp/Tcp.h"
-#include "OrbtcpFlavour.h"
+#include "OrbtcpNoInitFlowsFlavour.h"
 
 namespace inet {
 namespace tcp {
@@ -15,42 +15,42 @@ namespace tcp {
 #define MIN_REXMIT_TIMEOUT     0.2   // 1s
 #define MAX_REXMIT_TIMEOUT     240   // 2 * MSL (RFC 1122)
 
-Register_Class(OrbtcpFlavour);
+Register_Class(OrbtcpNoInitFlowsFlavour);
 
-simsignal_t OrbtcpFlavour::txRateSignal = cComponent::registerSignal("txRate");
-simsignal_t OrbtcpFlavour::tauSignal = cComponent::registerSignal("tau");
-simsignal_t OrbtcpFlavour::uSignal = cComponent::registerSignal("u");
-simsignal_t OrbtcpFlavour::USignal = cComponent::registerSignal("U");
-simsignal_t OrbtcpFlavour::additiveIncreaseSignal = cComponent::registerSignal("additiveIncrease");
-simsignal_t OrbtcpFlavour::sharingFlowsSignal = cComponent::registerSignal("sharingFlows");
-simsignal_t OrbtcpFlavour::bottleneckBandwidthSignal = cComponent::registerSignal("bottleneckBandwidth");
-simsignal_t OrbtcpFlavour::avgRttSignal = cComponent::registerSignal("avgRtt");
-simsignal_t OrbtcpFlavour::queueingDelaySignal = cComponent::registerSignal("queueingDelay");
-simsignal_t OrbtcpFlavour::estimatedRttSignal = cComponent::registerSignal("estimatedRtt");
-simsignal_t OrbtcpFlavour::smoothedEstimatedRttSignal = cComponent::registerSignal("smoothedEstimatedRtt");
-simsignal_t OrbtcpFlavour::avgEstimatedRttSignal = cComponent::registerSignal("avgEstimatedRtt");
-simsignal_t OrbtcpFlavour::alphaSignal = cComponent::registerSignal("alpha");
-simsignal_t OrbtcpFlavour::measuringInflightSignal = cComponent::registerSignal("measuringInflight");
-simsignal_t OrbtcpFlavour::txBytesSignal = cComponent::registerSignal("txBytes");
+simsignal_t OrbtcpNoInitFlowsFlavour::txRateSignal = cComponent::registerSignal("txRate");
+simsignal_t OrbtcpNoInitFlowsFlavour::tauSignal = cComponent::registerSignal("tau");
+simsignal_t OrbtcpNoInitFlowsFlavour::uSignal = cComponent::registerSignal("u");
+simsignal_t OrbtcpNoInitFlowsFlavour::USignal = cComponent::registerSignal("U");
+simsignal_t OrbtcpNoInitFlowsFlavour::additiveIncreaseSignal = cComponent::registerSignal("additiveIncrease");
+simsignal_t OrbtcpNoInitFlowsFlavour::sharingFlowsSignal = cComponent::registerSignal("sharingFlows");
+simsignal_t OrbtcpNoInitFlowsFlavour::bottleneckBandwidthSignal = cComponent::registerSignal("bottleneckBandwidth");
+simsignal_t OrbtcpNoInitFlowsFlavour::avgRttSignal = cComponent::registerSignal("avgRtt");
+simsignal_t OrbtcpNoInitFlowsFlavour::queueingDelaySignal = cComponent::registerSignal("queueingDelay");
+simsignal_t OrbtcpNoInitFlowsFlavour::estimatedRttSignal = cComponent::registerSignal("estimatedRtt");
+simsignal_t OrbtcpNoInitFlowsFlavour::smoothedEstimatedRttSignal = cComponent::registerSignal("smoothedEstimatedRtt");
+simsignal_t OrbtcpNoInitFlowsFlavour::avgEstimatedRttSignal = cComponent::registerSignal("avgEstimatedRtt");
+simsignal_t OrbtcpNoInitFlowsFlavour::alphaSignal = cComponent::registerSignal("alpha");
+simsignal_t OrbtcpNoInitFlowsFlavour::measuringInflightSignal = cComponent::registerSignal("measuringInflight");
+simsignal_t OrbtcpNoInitFlowsFlavour::txBytesSignal = cComponent::registerSignal("txBytes");
 
-simsignal_t OrbtcpFlavour::testRttSignal = cComponent::registerSignal("testRtt");
+simsignal_t OrbtcpNoInitFlowsFlavour::testRttSignal = cComponent::registerSignal("testRtt");
 
-simsignal_t OrbtcpFlavour::sndUnaSignal = cComponent::registerSignal("sndUna");
-simsignal_t OrbtcpFlavour::sndMaxSignal = cComponent::registerSignal("sndMax");
+simsignal_t OrbtcpNoInitFlowsFlavour::sndUnaSignal = cComponent::registerSignal("sndUna");
+simsignal_t OrbtcpNoInitFlowsFlavour::sndMaxSignal = cComponent::registerSignal("sndMax");
 
-simsignal_t OrbtcpFlavour::recoveryPointSignal = cComponent::registerSignal("recoveryPoint");
+simsignal_t OrbtcpNoInitFlowsFlavour::recoveryPointSignal = cComponent::registerSignal("recoveryPoint");
 
-OrbtcpFlavour::OrbtcpFlavour() : OrbtcpFamily(),
+OrbtcpNoInitFlowsFlavour::OrbtcpNoInitFlowsFlavour() : OrbtcpFamily(),
     state((OrbtcpStateVariables *&)TcpAlgorithm::state)
 {
 }
 
-OrbtcpFlavour::~OrbtcpFlavour() {
+OrbtcpNoInitFlowsFlavour::~OrbtcpNoInitFlowsFlavour() {
     cancelEvent(reactTimer);
     delete reactTimer;
 }
 
-void OrbtcpFlavour::initialize()
+void OrbtcpNoInitFlowsFlavour::initialize()
 {
     OrbtcpFamily::initialize();
     state->B = conn->getTcpMain()->par("bandwidth");
@@ -76,7 +76,7 @@ void OrbtcpFlavour::initialize()
     //updateNext = false;
 }
 
-void OrbtcpFlavour::established(bool active)
+void OrbtcpNoInitFlowsFlavour::established(bool active)
 {
     //state->snd_cwnd = state->B * state->T.dbl();
     state->snd_cwnd = 7300; //5 packets
@@ -93,7 +93,7 @@ void OrbtcpFlavour::established(bool active)
     }
 }
 
-void OrbtcpFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAcked)
+void OrbtcpNoInitFlowsFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAcked)
 {
     //
     // Jacobson's algorithm for estimating RTT and adaptively setting RTO.
@@ -153,7 +153,7 @@ void OrbtcpFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAcked)
     conn->emit(rtoSignal, rto);
 }
 
-void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
+void OrbtcpNoInitFlowsFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
     TcpTahoeRenoFamily::receivedDataAck(firstSeqAcked);
     EV_INFO << "\nORBTCPInfo ___________________________________________" << endl;
@@ -217,7 +217,7 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
     conn->emit(sndMaxSignal, state->snd_max);
 }
 
-void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData)
+void OrbtcpNoInitFlowsFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
     bool isHighRxtLost = dynamic_cast<TcpPacedConnection*>(conn)->checkIsLost(state->snd_una+state->snd_mss);
     bool rackLoss = dynamic_cast<TcpPacedConnection*>(conn)->checkRackLoss();
@@ -300,7 +300,7 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
     }
 }
 
-double OrbtcpFlavour::measureInflight(IntDataVec intData)
+double OrbtcpNoInitFlowsFlavour::measureInflight(IntDataVec intData)
 {
     TcpPacedConnection::RateSample rs = dynamic_cast<TcpPacedConnection*>(conn)->getRateSample();
 
@@ -423,12 +423,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
         state->initialPhase = false;
     }
     else{
-        if(state->initialPhaseSharingFlows > 1){
-            state->additiveIncrease = ((((bottleneckBandwidth)/state->initialPhaseSharingFlows) * rtt.dbl()) * state->additiveIncreasePercent);
-        }
-        else{
-            state->additiveIncrease = (bottleneckBandwidth * rtt.dbl()) * state->additiveIncreasePercent/2;
-        }
+        state->additiveIncrease = ((((bottleneckBandwidth)/state->sharingFlows) * rtt.dbl()) * state->additiveIncreasePercent);
     }
 
     conn->emit(testRttSignal, bottleneckRtt);
@@ -439,7 +434,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     return state->u;
 }
 
-uint32_t OrbtcpFlavour::computeWnd(double u, bool updateWc)
+uint32_t OrbtcpNoInitFlowsFlavour::computeWnd(double u, bool updateWc)
 {
     uint32_t targetW;
     if(u >= state->eta) {
@@ -458,22 +453,22 @@ uint32_t OrbtcpFlavour::computeWnd(double u, bool updateWc)
     return targetW;
 }
 
-size_t OrbtcpFlavour::getConnId()
+size_t OrbtcpNoInitFlowsFlavour::getConnId()
 {
     return connId;
 }
 
-simtime_t OrbtcpFlavour::getRtt()
+simtime_t OrbtcpNoInitFlowsFlavour::getRtt()
 {
     return state->srtt;
 }
 
-simtime_t OrbtcpFlavour::getEstimatedRtt()
+simtime_t OrbtcpNoInitFlowsFlavour::getEstimatedRtt()
 {
     return smoothedEstimatedRtt;
 }
 
-void OrbtcpFlavour::processRexmitTimer(TcpEventCode &event) {
+void OrbtcpNoInitFlowsFlavour::processRexmitTimer(TcpEventCode &event) {
     TcpPacedFamily::processRexmitTimer(event);
 
     EV_INFO << "Begin Slow Start: resetting cwnd to " << state->snd_cwnd
@@ -484,7 +479,7 @@ void OrbtcpFlavour::processRexmitTimer(TcpEventCode &event) {
     sendData(false);
 }
 
-void OrbtcpFlavour::processTimer(cMessage *timer, TcpEventCode& event)
+void OrbtcpNoInitFlowsFlavour::processTimer(cMessage *timer, TcpEventCode& event)
 {
     if(timer == reactTimer){
         updateWindow = true;
