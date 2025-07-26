@@ -49,6 +49,7 @@ struct OrbtcpFamilyStateVariables extends TcpTahoeRenoFamilyStateVariables
     int rttCount = 0;
     uint32_t ssthresh = 0;
     bool initialPhase = true;
+    bool endInitialPhase = false;
     
     double alpha = 0;
     double useHpccAlpha = false;
