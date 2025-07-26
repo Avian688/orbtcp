@@ -62,12 +62,14 @@ class OrbtcpNoInitFlowsFlavour : public OrbtcpFamily
     simtime_t smoothedEstimatedRtt;
 
     cMessage *reactTimer;
+    cMessage *initReactTimer;
     bool updateWindow;
 
     bool pathChanged;
 
     std::vector<bool> pathId;
 
+    bool firstRTT;
     bool initPackets;
     /** Create and return a OrbtcpStateVariables object. */
     virtual TcpStateVariables *createStateVariables() override

@@ -48,6 +48,9 @@ OrbtcpFlavour::OrbtcpFlavour() : OrbtcpFamily(),
 OrbtcpFlavour::~OrbtcpFlavour() {
     cancelEvent(reactTimer);
     delete reactTimer;
+
+    cancelEvent(initReactTimer);
+    delete initReactTimer;
 }
 
 void OrbtcpFlavour::initialize()
@@ -63,6 +66,8 @@ void OrbtcpFlavour::initialize()
     state->queueingDelay = 0;
     state->additiveIncrease = 1;
     state->prevWnd = 10000;
+    state->initialPhase = false;
+    firstRTT = true;
 
     state->alpha = conn->getTcpMain()->par("alpha");
     if(state->alpha > 0){
@@ -72,7 +77,8 @@ void OrbtcpFlavour::initialize()
         state->useHpccAlpha = true;
     }
     reactTimer = new cMessage("React Timer");
-    updateWindow = true;
+    initReactTimer = new cMessage("Init React Timer");
+    updateWindow = false;
     //updateNext = false;
 }
 
@@ -81,7 +87,7 @@ void OrbtcpFlavour::established(bool active)
     //state->snd_cwnd = state->B * state->T.dbl();
     state->snd_cwnd = 7300; //5 packets
     dynamic_cast<OrbtcpConnection*>(conn)->changeIntersendingTime(0.000001); //do not pace intial packets as RTT is unknown
-    state->ssthresh = 7300;
+    state->ssthresh = 73000;
     connId = std::hash<std::string>{}(conn->localAddr.str() + "/" + std::to_string(conn->localPort) + "/" + conn->remoteAddr.str() + "/" + std::to_string(conn->remotePort));
     initPackets = true;
     EV_DETAIL << "OrbTCP initial CWND is set to " << state->snd_cwnd << "\n";
@@ -109,6 +115,10 @@ void OrbtcpFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAcked)
 
     if(state->srtt == 0){
         state->srtt = newRTT;
+    }
+
+    if(smoothedEstimatedRtt == 0){
+        smoothedEstimatedRtt = newRTT;
     }
 
     simtime_t& srtt = state->srtt;
@@ -190,6 +200,7 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
     }
 
     double uVal = measureInflight(intData);
+
     if(uVal > 0) {
         if(!pathChanged){
             state->snd_cwnd = computeWnd(uVal, updateWindow);
@@ -219,6 +230,7 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 
 void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
+    state->initialPhase = false;
     bool isHighRxtLost = dynamic_cast<TcpPacedConnection*>(conn)->checkIsLost(state->snd_una+state->snd_mss);
     bool rackLoss = dynamic_cast<TcpPacedConnection*>(conn)->checkRackLoss();
     if ((rackLoss && !state->lossRecovery) || state->dupacks == state->dupthresh || (isHighRxtLost && !state->lossRecovery)) {
@@ -374,6 +386,9 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
         }
     }
 
+    if(!initReactTimer->isScheduled()){
+        conn->scheduleAt(simTime() + bottleneckAverageRtt, initReactTimer);
+    }
     if(bottleneckIsPastAck || pathChanged){
         return 0;
     }
@@ -390,8 +405,8 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
         return 0;
     }
 
-    state->sharingFlows = bottleneckSharingFlows;
-    state->initialPhaseSharingFlows = bottleneckInitPhaseFlows;
+    state->sharingFlows = std::max(1.0, bottleneckSharingFlows);
+
 
     state->txRate = bottleneckTxRate;
     state->bottBW = bottleneckBandwidth;
@@ -416,18 +431,28 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     conn->emit(alphaSignal, state->alpha);
     conn->emit(USignal, state->u);
 
-    state->ssthresh = ((((bottleneckBandwidth)/state->sharingFlows) * smoothedEstimatedRtt.dbl()) * state->eta);
-    if(!state->initialPhase || state->snd_cwnd > state->ssthresh){ //slow start - more aggressive till max allowed share is reached
-        state->additiveIncrease = ((((bottleneckBandwidth)/state->sharingFlows) * rtt.dbl()) * state->additiveIncreasePercent);
-        state->ssthresh = 0;
-        state->initialPhase = false;
-    }
-    else{
-        if(state->initialPhaseSharingFlows > 1){
-            state->additiveIncrease = ((((bottleneckBandwidth)/state->initialPhaseSharingFlows) * rtt.dbl()) * state->additiveIncreasePercent);
+    if(!firstRTT){
+        if(!state->initialPhase){ //slow start - more aggressive till max allowed share is reached
+            state->additiveIncrease = ((((bottleneckBandwidth)/state->sharingFlows) * rtt.dbl()) * state->additiveIncreasePercent);
+            state->ssthresh = 0;
         }
         else{
-            state->additiveIncrease = (bottleneckBandwidth * rtt.dbl()) * state->additiveIncreasePercent/2;
+            state->ssthresh = ((((bottleneckBandwidth)/(state->sharingFlows+state->initialPhaseSharingFlows)) * smoothedEstimatedRtt.dbl()) * state->eta);
+            double initAI = state->additiveIncreasePercent;
+//            if(state->eta/state->sharingFlows < initAI){
+//                initAI = state->eta/state->sharingFlows;
+//            }
+
+            //state->additiveIncrease = ((((bottleneckBandwidth)/std::max(1, state->initialPhaseSharingFlows)) * rtt.dbl()) * initAI);
+
+            //if(state->snd_cwnd + state->additiveIncrease > state->ssthresh){
+            state->additiveIncrease = state->ssthresh - state->snd_cwnd;
+                //state->endInitialPhase = true;
+            //}
+
+            //if(state->snd_cwnd >= state->ssthresh){
+            state->endInitialPhase = true;
+            //}
         }
     }
 
@@ -436,6 +461,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     conn->emit(avgRttSignal, bottleneckAverageRtt);
     conn->emit(additiveIncreaseSignal, state->additiveIncrease);
     conn->emit(ssthreshSignal, state->ssthresh);
+
     return state->u;
 }
 
@@ -452,6 +478,9 @@ uint32_t OrbtcpFlavour::computeWnd(double u, bool updateWc)
     if(updateWc) {
         updateWindow = false;
         state->prevWnd = targetW;
+        if(state->endInitialPhase){
+            state->initialPhase = false;
+        }
         conn->emit(txRateSignal, state->txRate);
     }
 
@@ -491,6 +520,12 @@ void OrbtcpFlavour::processTimer(cMessage *timer, TcpEventCode& event)
         pathChanged = false;
         conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
     }
+    else if(timer == initReactTimer){
+        if(firstRTT == true){
+            firstRTT = false;
+            state->initialPhase = true;
+        }
+    }
     else if (timer == rexmitTimer)
         processRexmitTimer(event);
     else if (timer == persistTimer)
@@ -503,6 +538,13 @@ void OrbtcpFlavour::processTimer(cMessage *timer, TcpEventCode& event)
         throw cRuntimeError(timer, "unrecognized timer");
 }
 
+bool OrbtcpFlavour::getInitialPhase()
+{
+    if(state->initialPhase || firstRTT){
+        return true;
+    }
+    return false;
+}
 
 } // namespace tcp
 } // namespace inet

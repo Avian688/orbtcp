@@ -48,6 +48,9 @@ OrbtcpNoInitFlowsFlavour::OrbtcpNoInitFlowsFlavour() : OrbtcpFamily(),
 OrbtcpNoInitFlowsFlavour::~OrbtcpNoInitFlowsFlavour() {
     cancelEvent(reactTimer);
     delete reactTimer;
+
+    cancelEvent(initReactTimer);
+    delete initReactTimer;
 }
 
 void OrbtcpNoInitFlowsFlavour::initialize()
@@ -63,6 +66,8 @@ void OrbtcpNoInitFlowsFlavour::initialize()
     state->queueingDelay = 0;
     state->additiveIncrease = 1;
     state->prevWnd = 10000;
+    state->initialPhase = false;
+    firstRTT = true;
 
     state->alpha = conn->getTcpMain()->par("alpha");
     if(state->alpha > 0){
@@ -72,7 +77,8 @@ void OrbtcpNoInitFlowsFlavour::initialize()
         state->useHpccAlpha = true;
     }
     reactTimer = new cMessage("React Timer");
-    updateWindow = true;
+    initReactTimer = new cMessage("Init React Timer");
+    updateWindow = false;
     //updateNext = false;
 }
 
@@ -109,6 +115,10 @@ void OrbtcpNoInitFlowsFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t
 
     if(state->srtt == 0){
         state->srtt = newRTT;
+    }
+
+    if(smoothedEstimatedRtt == 0){
+        smoothedEstimatedRtt = newRTT;
     }
 
     simtime_t& srtt = state->srtt;
@@ -219,6 +229,7 @@ void OrbtcpNoInitFlowsFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVe
 
 void OrbtcpNoInitFlowsFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
+    state->initialPhase = false;
     bool isHighRxtLost = dynamic_cast<TcpPacedConnection*>(conn)->checkIsLost(state->snd_una+state->snd_mss);
     bool rackLoss = dynamic_cast<TcpPacedConnection*>(conn)->checkRackLoss();
     if ((rackLoss && !state->lossRecovery) || state->dupacks == state->dupthresh || (isHighRxtLost && !state->lossRecovery)) {
@@ -390,8 +401,9 @@ double OrbtcpNoInitFlowsFlavour::measureInflight(IntDataVec intData)
         return 0;
     }
 
-    state->sharingFlows = bottleneckSharingFlows;
-    state->initialPhaseSharingFlows = bottleneckInitPhaseFlows;
+    state->sharingFlows = std::max(1.0, bottleneckSharingFlows);
+    state->initialPhaseSharingFlows = std::max(1.0, bottleneckInitPhaseFlows);
+
 
     state->txRate = bottleneckTxRate;
     state->bottBW = bottleneckBandwidth;
@@ -412,15 +424,21 @@ double OrbtcpNoInitFlowsFlavour::measureInflight(IntDataVec intData)
         state->u = u;
     }
 
+    if(!initReactTimer->isScheduled()){
+        conn->scheduleAt(simTime() + bottleneckAverageRtt, initReactTimer);
+    }
+
     state->u = (1-state->alpha)*state->u+state->alpha*u;
     conn->emit(alphaSignal, state->alpha);
     conn->emit(USignal, state->u);
 
     state->ssthresh = ((((bottleneckBandwidth)/state->sharingFlows) * smoothedEstimatedRtt.dbl()) * state->eta);
-    if(!state->initialPhase || state->snd_cwnd > state->ssthresh){ //slow start - more aggressive till max allowed share is reached
+    if(!state->initialPhase || state->snd_cwnd > state->ssthresh || firstRTT){ //slow start - more aggressive till max allowed share is reached
         state->additiveIncrease = ((((bottleneckBandwidth)/state->sharingFlows) * rtt.dbl()) * state->additiveIncreasePercent);
         state->ssthresh = 0;
-        state->initialPhase = false;
+        if(!firstRTT){
+            state->endInitialPhase = true;
+        }
     }
     else{
         state->additiveIncrease = ((((bottleneckBandwidth)/state->sharingFlows) * rtt.dbl()) * state->additiveIncreasePercent);
@@ -437,7 +455,7 @@ double OrbtcpNoInitFlowsFlavour::measureInflight(IntDataVec intData)
 uint32_t OrbtcpNoInitFlowsFlavour::computeWnd(double u, bool updateWc)
 {
     uint32_t targetW;
-    if(u >= state->eta) {
+    if(u >= state->eta && !state->initialPhase) {
         targetW = (state->prevWnd/(u/state->eta)) + state->additiveIncrease;
     }
     else {
@@ -447,6 +465,9 @@ uint32_t OrbtcpNoInitFlowsFlavour::computeWnd(double u, bool updateWc)
     if(updateWc) {
         updateWindow = false;
         state->prevWnd = targetW;
+        if(state->endInitialPhase){
+            state->initialPhase = false;
+        }
         conn->emit(txRateSignal, state->txRate);
     }
 
@@ -485,6 +506,11 @@ void OrbtcpNoInitFlowsFlavour::processTimer(cMessage *timer, TcpEventCode& event
         updateWindow = true;
         pathChanged = false;
         conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
+    }
+    else if(timer == initReactTimer){
+        if(firstRTT == true){
+            firstRTT = false;
+        }
     }
     else if (timer == rexmitTimer)
         processRexmitTimer(event);

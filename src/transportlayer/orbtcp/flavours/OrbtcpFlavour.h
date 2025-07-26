@@ -62,12 +62,14 @@ class OrbtcpFlavour : public OrbtcpFamily
     simtime_t smoothedEstimatedRtt;
 
     cMessage *reactTimer;
+    cMessage *initReactTimer;
     bool updateWindow;
 
     bool pathChanged;
 
     std::vector<bool> pathId;
 
+    bool firstRTT;
     bool initPackets;
     /** Create and return a OrbtcpStateVariables object. */
     virtual TcpStateVariables *createStateVariables() override
@@ -107,6 +109,8 @@ class OrbtcpFlavour : public OrbtcpFamily
     virtual void receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData) override;
 
     virtual void processTimer(cMessage *timer, TcpEventCode& event) override;
+
+    virtual bool getInitialPhase() override;
 
     };
 

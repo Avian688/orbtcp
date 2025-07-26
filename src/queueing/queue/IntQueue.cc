@@ -102,7 +102,6 @@ void IntQueue::processTimer()
             avgRtt = SimTime(sumRttSquareByCwnd/sumRttByCwnd);
         }
         numbOfFlows = flowIds.size();
-        numOfFlowsInInitialPhase = initialPhaseFlowIds.size();
         sumRttSquareByCwnd = 0;
         sumRttByCwnd = 0;
         changePersistentQueueSize = true;
@@ -163,6 +162,7 @@ void IntQueue::pushPacket(Packet *packet, cGate *gate)
                 if(tcpHeader->getTag<IntTag>()->getInitialPhase()){ //if in initial phase and not in current flow list, increment numberOfFlowsInInitialPhase
                     initialPhaseFlowIds.insert(tcpHeader->getTag<IntTag>()->getConnId());;
                 }
+                numOfFlowsInInitialPhase = initialPhaseFlowIds.size();
             }
             tcpHeader->addTagIfAbsent<IntTag>();
             IntMetaData* intData = new IntMetaData();
