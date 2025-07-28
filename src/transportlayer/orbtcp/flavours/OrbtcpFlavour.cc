@@ -437,7 +437,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
             state->ssthresh = 0;
         }
         else{
-            state->ssthresh = ((((bottleneckBandwidth)/(state->sharingFlows+state->initialPhaseSharingFlows)) * smoothedEstimatedRtt.dbl()) * state->eta);
+            state->ssthresh = (((bottleneckBandwidth/(state->sharingFlows+state->initialPhaseSharingFlows)) * smoothedEstimatedRtt.dbl()) * state->eta);
             double initAI = state->additiveIncreasePercent;
 //            if(state->eta/state->sharingFlows < initAI){
 //                initAI = state->eta/state->sharingFlows;
