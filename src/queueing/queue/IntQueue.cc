@@ -149,7 +149,7 @@ void IntQueue::pushPacket(Packet *packet, cGate *gate)
     if (ipv4Header->getTotalLengthField() < packet->getDataLength())
         packet->setBackOffset(B(ipv4Header->getTotalLengthField()) - ipv4Header->getChunkLength());
 
-    if(ipv4Header->getProtocolId() == 6){
+    if(ipv4Header->getProtocolId() == 6){ // 6 = TCP data
         auto tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
         if(packet->getDataLength() > b(0)) { //Data Packet
             if(tcpHeader->findTag<IntTag>()){
