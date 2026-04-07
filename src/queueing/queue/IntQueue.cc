@@ -89,11 +89,12 @@ void IntQueue::processTimer()
 {
     if(sumRttSquareByCwnd > 0 && sumRttByCwnd > 0){
         double queueingDelay = 0;
+        const double bytesPerSecond = static_cast<double>(bandwidth) / 8.0;
         if(persistentQueueSize != 2147483647){
-            queueingDelay = (persistentQueueSize / bandwidth/8);
+            queueingDelay = bytesPerSecond > 0 ? static_cast<double>(persistentQueueSize) / bytesPerSecond : 0;
             //cSimpleModule::emit(persistentQueueingDelaySignal, (persistentQueueSize / dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate()/8));
         }
-        queueingDelay = (queue.getByteLength() / bandwidth/8);
+        queueingDelay = bytesPerSecond > 0 ? static_cast<double>(queue.getByteLength()) / bytesPerSecond : 0;
         cSimpleModule::emit(persistentQueueingDelaySignal, queueingDelay);
         if(fixedAvgRTTVal > 0){
             avgRtt = fixedAvgRTTVal;

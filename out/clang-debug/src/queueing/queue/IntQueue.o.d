@@ -1,7 +1,7 @@
 ../out/clang-debug/src/queueing/queue/IntQueue.o: \
   queueing/queue/IntQueue.cc \
   ../../inet4.5/src/inet/networklayer/ipv4/Ipv4Header_m.h \
-  /Users/av288/omnetpp-6.1/include/omnetpp.h \
+  /Users/av288/omnetpp-6.3.0/include/omnetpp.h \
   ../../inet4.5/src/inet/common/INETDefs_m.h \
   ../../inet4.5/src/inet/common/INETDefs.h \
   ../../inet4.5/src/inet/common/precompiled_debug.h \
@@ -87,7 +87,7 @@
   ../../inet4.5/src/inet/queueing/contract/IPacketComparatorFunction.h \
   ../../inet4.5/src/inet/queueing/contract/IPacketDropperFunction.h
 ../../inet4.5/src/inet/networklayer/ipv4/Ipv4Header_m.h:
-/Users/av288/omnetpp-6.1/include/omnetpp.h:
+/Users/av288/omnetpp-6.3.0/include/omnetpp.h:
 ../../inet4.5/src/inet/common/INETDefs_m.h:
 ../../inet4.5/src/inet/common/INETDefs.h:
 ../../inet4.5/src/inet/common/precompiled_debug.h:
