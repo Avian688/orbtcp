@@ -245,7 +245,13 @@ Packet *IntQueue::pullPacket(cGate *gate)
             intData->setQLen(queue.getByteLength());
             intData->setTs(simTime());
             intData->setTxBytes(txBytes);
-            intData->setB(dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate()/8);
+            auto *networkInterface = dynamic_cast<NetworkInterface*>(getParentModule());
+            auto *rxTransmissionChannel = networkInterface ? networkInterface->getRxTransmissionChannel() : nullptr;
+            if (rxTransmissionChannel != nullptr)
+                intData->setB(rxTransmissionChannel->getNominalDatarate() / 8);
+            else
+                // Ground-station handovers can disconnect the gate before the queue is flushed.
+                intData->setB(bandwidth / 8);
         }
         packet->insertAtFront(tcpHeader);
     }
