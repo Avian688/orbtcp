@@ -24,6 +24,7 @@ class IntMetaData extends cObject
 	long b; //Link bandwidth capacity
 	double averageRtt;
 	int numOfFlows;
+	double effectiveNumOfFlows;
 	long rxQlen; // RX Queue Length
 	int numOfFlowsInInitialPhase;
 }

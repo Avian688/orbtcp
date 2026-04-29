@@ -26,6 +26,7 @@ class IntQueue : public PacketQueue {
 protected:
     static simsignal_t avgRttSignal;
     static simsignal_t numberOfFlowsSignal;
+    static simsignal_t effectiveNumberOfFlowsSignal;
     static simsignal_t persistentQueueingDelaySignal;
     static simsignal_t numOfFlowsInInitialPhaseSignal;
     static simsignal_t bandwidthSignal;
@@ -39,17 +40,21 @@ protected:
     long txBytes;
     simtime_t avgRtt;
     int numbOfFlows;
+    double effectiveNumOfFlows;
     int numOfFlowsInInitialPhase;
     simtime_t avgRttTimer;
     cMessage *averageRttTimerMsg = nullptr;
     //std::map<std::string, simtime_t> rtts;
     std::set<long> flowIds;
+    std::map<long, long long> flowByteCounts;
     std::set<long> initialPhaseFlowIds;
     double sumRttByCwnd;
     double sumRttSquareByCwnd;
     long persistentQueueSize;
     bool changePersistentQueueSize;
     double fixedAvgRTTVal;
+    int minActiveFlowBytes;
+    double activeFlowThresholdFraction;
 
 protected:
     virtual void initialize(int stage) override;

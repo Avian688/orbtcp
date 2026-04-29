@@ -797,7 +797,7 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             updateInFlight();
 
             uint32_t currentLost = m_bytesLoss;
-            uint32_t lost = (currentLost > previousLost) ? currentLost - previousLost : previousLost - currentLost;
+            uint32_t lost = (currentLost > previousLost) ? currentLost - previousLost : 0;
 
             updateSample(currentDelivered, lost, false, priorInFlight, connMinRtt);
 
@@ -940,7 +940,7 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             updateInFlight();
 
             uint32_t currentLost = m_bytesLoss;
-            uint32_t lost = (currentLost > previousLost) ? currentLost - previousLost : previousLost - currentLost;
+            uint32_t lost = (currentLost > previousLost) ? currentLost - previousLost : 0;
 
             updateSample(currentDelivered, lost, false, priorInFlight, connMinRtt);
 
@@ -1121,7 +1121,8 @@ uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
     if (state->sack_enabled){
         rexmitQueue->enqueueSentData(old_snd_nxt, state->snd_nxt);
         if(pace){
-            rexmitQueue->skbSent(state->snd_nxt, m_firstSentTime, simTime(), m_deliveredTime, false, m_delivered, m_appLimited);
+            rexmitQueue->skbSent(state->snd_nxt, m_firstSentTime, simTime(), m_deliveredTime,
+                    m_bytesInFlight + sentBytes, false, m_delivered, m_appLimited);
         }
     }
     // add header options and update header length (from tcpseg_temp)

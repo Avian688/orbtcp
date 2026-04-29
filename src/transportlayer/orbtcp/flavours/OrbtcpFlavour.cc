@@ -67,7 +67,11 @@ void OrbtcpFlavour::initialize()
     state->additiveIncrease = 1;
     state->prevWnd = 10000;
     state->initialPhase = false;
+    state->L.clear();
     firstRTT = true;
+    initPackets = false;
+    pathChanged = false;
+    pathId.clear();
 
     state->alpha = conn->getTcpMain()->par("alpha");
     if(state->alpha > 0){
@@ -548,4 +552,3 @@ bool OrbtcpFlavour::getInitialPhase()
 
 } // namespace tcp
 } // namespace inet
-
