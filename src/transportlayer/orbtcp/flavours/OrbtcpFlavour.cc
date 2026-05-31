@@ -264,8 +264,15 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
             if (state->recoveryPoint == 0 || seqGE(state->snd_una, state->recoveryPoint)) { // HighACK = snd_una
                 state->recoveryPoint = state->snd_max; // HighData = snd_max
                 state->lossRecovery = true;
-                dynamic_cast<TcpPacedConnection*>(conn)->setSackedHeadLost();
-                dynamic_cast<TcpPacedConnection*>(conn)->updateInFlight();
+                if (rackLoss) {
+                    // RACK should already have marked lost packets.
+                    dynamic_cast<TcpPacedConnection*>(conn)->updateInFlight();
+                }
+                else {
+                    // dupthresh / highRxt fallback path
+                    dynamic_cast<TcpPacedConnection*>(conn)->setSackedHeadLost();
+                    dynamic_cast<TcpPacedConnection*>(conn)->updateInFlight();
+                }
                 //std::cout << "\n Entering Loss recovery - dup acks > dupthresh at simTime: " << simTime().dbl() << endl;
                 EV_DETAIL << " recoveryPoint=" << state->recoveryPoint;
                 dynamic_cast<TcpPacedConnection*>(conn)->doRetransmit();
