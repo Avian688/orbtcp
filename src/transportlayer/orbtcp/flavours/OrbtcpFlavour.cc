@@ -235,9 +235,26 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
     state->initialPhase = false;
-    bool isHighRxtLost = dynamic_cast<TcpPacedConnection*>(conn)->checkIsLost(state->snd_una+state->snd_mss);
-    bool rackLoss = dynamic_cast<TcpPacedConnection*>(conn)->checkRackLoss();
-    if ((rackLoss && !state->lossRecovery) || state->dupacks == state->dupthresh || (isHighRxtLost && !state->lossRecovery)) {
+    auto pacedConn = dynamic_cast<TcpPacedConnection*>(conn);
+    bool newRackLoss = false;
+    bool rackRecovery = pacedConn->checkRackLoss(&newRackLoss);
+    bool handledRackLoss = state->sack_enabled && (rackRecovery || newRackLoss);
+    if (handledRackLoss) {
+        EV_INFO << "RACK detected loss: enter/update loss recovery.\n";
+        if (!state->lossRecovery) {
+            state->recoveryPoint = state->snd_max;
+            state->lossRecovery = true;
+            conn->emit(recoveryPointSignal, state->recoveryPoint);
+        }
+        pacedConn->updateInFlight();
+        if (pacedConn->doRetransmit()) {
+            EV_INFO << "Retransmission sent during RACK recovery, restarting REXMIT timer.\n";
+            restartRexmitTimer();
+        }
+    }
+
+    bool isHighRxtLost = pacedConn->checkIsLost(state->snd_una+state->snd_mss);
+    if (!handledRackLoss && (state->dupacks == state->dupthresh || (isHighRxtLost && !state->lossRecovery))) {
         EV_INFO << "Reno on dupAcks == DUPTHRESH(=" << state->dupthresh << ": perform Fast Retransmit, and enter Fast Recovery:";
 
         if (state->sack_enabled) {
@@ -264,18 +281,11 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
             if (state->recoveryPoint == 0 || seqGE(state->snd_una, state->recoveryPoint)) { // HighACK = snd_una
                 state->recoveryPoint = state->snd_max; // HighData = snd_max
                 state->lossRecovery = true;
-                if (rackLoss) {
-                    // RACK should already have marked lost packets.
-                    dynamic_cast<TcpPacedConnection*>(conn)->updateInFlight();
-                }
-                else {
-                    // dupthresh / highRxt fallback path
-                    dynamic_cast<TcpPacedConnection*>(conn)->setSackedHeadLost();
-                    dynamic_cast<TcpPacedConnection*>(conn)->updateInFlight();
-                }
+                pacedConn->setSackedHeadLost();
+                pacedConn->updateInFlight();
                 //std::cout << "\n Entering Loss recovery - dup acks > dupthresh at simTime: " << simTime().dbl() << endl;
                 EV_DETAIL << " recoveryPoint=" << state->recoveryPoint;
-                dynamic_cast<TcpPacedConnection*>(conn)->doRetransmit();
+                pacedConn->doRetransmit();
                 //conn->rescheduleAt(simTime() + state->srtt.dbl(), reactTimer);
 
                 //sendData(false);
@@ -515,6 +525,8 @@ simtime_t OrbtcpFlavour::getEstimatedRtt()
 
 void OrbtcpFlavour::processRexmitTimer(TcpEventCode &event) {
     TcpPacedFamily::processRexmitTimer(event);
+    if (event == TCP_E_ABORT)
+        return;
 
     EV_INFO << "Begin Slow Start: resetting cwnd to " << state->snd_cwnd
                    << ", ssthresh=" << state->ssthresh << "\n";
