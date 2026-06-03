@@ -281,7 +281,7 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
             if (state->recoveryPoint == 0 || seqGE(state->snd_una, state->recoveryPoint)) { // HighACK = snd_una
                 state->recoveryPoint = state->snd_max; // HighData = snd_max
                 state->lossRecovery = true;
-                pacedConn->setSackedHeadLost();
+                pacedConn->setSackedHeadLostIfRackDisabled();
                 pacedConn->updateInFlight();
                 //std::cout << "\n Entering Loss recovery - dup acks > dupthresh at simTime: " << simTime().dbl() << endl;
                 EV_DETAIL << " recoveryPoint=" << state->recoveryPoint;
