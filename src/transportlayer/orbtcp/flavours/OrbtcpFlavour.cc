@@ -172,7 +172,8 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
     TcpTahoeRenoFamily::receivedDataAck(firstSeqAcked);
     EV_INFO << "\nORBTCPInfo ___________________________________________" << endl;
     EV_INFO << "\nORBTCPInfo - Received Data Ack" << endl;
-    if (state->lossRecovery && state->sack_enabled) {
+    bool wasInLossRecovery = state->lossRecovery && state->sack_enabled;
+    if (wasInLossRecovery) {
         // RFC 3517, page 7: "Once a TCP is in the loss recovery phase the following procedure MUST
         // be used for each arriving ACK:
         //
@@ -201,6 +202,13 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
             //conn->setPipe();
         }
         conn->emit(recoveryPointSignal, state->recoveryPoint);
+
+        conn->emit(cwndSignal, state->snd_cwnd);
+        if (!reactTimer->isScheduled())
+            conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
+        conn->emit(sndUnaSignal, state->snd_una);
+        conn->emit(sndMaxSignal, state->snd_max);
+        return;
     }
 
     double uVal = measureInflight(intData);
@@ -236,25 +244,8 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
 {
     state->initialPhase = false;
     auto pacedConn = dynamic_cast<TcpPacedConnection*>(conn);
-    bool newRackLoss = false;
-    bool rackRecovery = pacedConn->checkRackLoss(&newRackLoss);
-    bool handledRackLoss = state->sack_enabled && (rackRecovery || newRackLoss);
-    if (handledRackLoss) {
-        EV_INFO << "RACK detected loss: enter/update loss recovery.\n";
-        if (!state->lossRecovery) {
-            state->recoveryPoint = state->snd_max;
-            state->lossRecovery = true;
-            conn->emit(recoveryPointSignal, state->recoveryPoint);
-        }
-        pacedConn->updateInFlight();
-        if (pacedConn->doRetransmit()) {
-            EV_INFO << "Retransmission sent during RACK recovery, restarting REXMIT timer.\n";
-            restartRexmitTimer();
-        }
-    }
 
-    bool isHighRxtLost = pacedConn->checkIsLost(state->snd_una+state->snd_mss);
-    if (!handledRackLoss && (state->dupacks == state->dupthresh || (isHighRxtLost && !state->lossRecovery))) {
+    if (shouldEnterLossRecoveryOnDuplicateAck()) {
         EV_INFO << "Reno on dupAcks == DUPTHRESH(=" << state->dupthresh << ": perform Fast Retransmit, and enter Fast Recovery:";
 
         if (state->sack_enabled) {
@@ -278,11 +269,13 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
             // recovery phase (as described in section 5) MUST NOT be initiated
             // until HighACK is greater than or equal to the new value of
             // RecoveryPoint."
-            if (state->recoveryPoint == 0 || seqGE(state->snd_una, state->recoveryPoint)) { // HighACK = snd_una
+            if ((state->recoveryPoint == 0 || seqGE(state->snd_una, state->recoveryPoint)) && !state->lossRecovery) { // HighACK = snd_una
                 state->recoveryPoint = state->snd_max; // HighData = snd_max
                 state->lossRecovery = true;
+                conn->emit(recoveryPointSignal, state->recoveryPoint);
                 pacedConn->setSackedHeadLostIfRackDisabled();
                 pacedConn->updateInFlight();
+                setRecoveryCongestionWindow();
                 //std::cout << "\n Entering Loss recovery - dup acks > dupthresh at simTime: " << simTime().dbl() << endl;
                 EV_DETAIL << " recoveryPoint=" << state->recoveryPoint;
                 pacedConn->doRetransmit();
@@ -306,8 +299,21 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
         }
 
     }
-    else if (state->dupacks > state->dupthresh) {
-        EV_INFO << "dupAcks > DUPTHRESH(=" << state->dupthresh << ": Fast Recovery: inflating cwnd by SMSS, new cwnd=" << state->snd_cwnd << "\n";
+    else if (state->lossRecovery && state->dupacks > state->dupthresh)
+        EV_DETAIL << "Additional duplicate ACK during RACK recovery; cwnd remains "
+                  << state->snd_cwnd << "\n";
+
+    if (state->lossRecovery) {
+        conn->emit(cwndSignal, state->snd_cwnd);
+        if (state->snd_cwnd > 0) {
+            uint32_t maxWindow = std::max(state->snd_cwnd, pacedConn->getBytesInFlight());
+            uint32_t nominalBandwidth = maxWindow / state->srtt.dbl();
+            double pace = 1 / ((1.2 * (double)nominalBandwidth) / state->snd_mss);
+            dynamic_cast<OrbtcpConnection *>(conn)->changeIntersendingTime(pace);
+        }
+        if (!reactTimer->isScheduled())
+            conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
+        return;
     }
 
     double uVal = measureInflight(intData);
@@ -521,6 +527,16 @@ simtime_t OrbtcpFlavour::getRtt()
 simtime_t OrbtcpFlavour::getEstimatedRtt()
 {
     return smoothedEstimatedRtt;
+}
+
+void OrbtcpFlavour::rackLossDetected()
+{
+    bool wasInRecovery = state->lossRecovery;
+    TcpPacedFamily::rackLossDetected();
+    if (!wasInRecovery && state->lossRecovery) {
+        conn->emit(recoveryPointSignal, state->recoveryPoint);
+        conn->emit(cwndSignal, state->snd_cwnd);
+    }
 }
 
 void OrbtcpFlavour::processRexmitTimer(TcpEventCode &event) {

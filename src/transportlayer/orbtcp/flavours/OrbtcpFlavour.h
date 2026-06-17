@@ -82,6 +82,9 @@ class OrbtcpFlavour : public OrbtcpFamily
     /** Redefine what should happen on retransmission */
     virtual void processRexmitTimer(TcpEventCode& event) override;
 
+    /** Enter or continue recovery after the connection's RACK detector marks loss. */
+    virtual void rackLossDetected() override;
+
   public:
     /** Constructor */
     OrbtcpFlavour();
@@ -118,4 +121,3 @@ class OrbtcpFlavour : public OrbtcpFamily
 } // namespace inet
 
 #endif
-
