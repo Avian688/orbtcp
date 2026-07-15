@@ -58,9 +58,8 @@ struct OrbtcpFamilyStateVariables extends TcpTahoeRenoFamilyStateVariables
 };
 
 cplusplus(OrbtcpFamilyStateVariables) {{
-  	std::vector<IntMetaData*> L;
+	IntDataVec L;
   public:
     virtual std::string str() const override;
     virtual std::string detailedInfo() const override;
 }}
-

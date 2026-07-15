@@ -40,7 +40,7 @@ double OrbtcpNewFlavour::measureInflight(IntDataVec intData)
 
     if (state->L.empty()) {
         for (int i = 0; i < intData.size(); i++) {
-            IntMetaData *intDataEntry = intData.at(i);
+            const IntMetaData *intDataEntry = &intData.at(i);
             int hopId = intDataEntry->getHopId();
             std::vector<bool> bitArray(16);
             std::vector<bool> tempBitArray(16);
@@ -67,7 +67,7 @@ double OrbtcpNewFlavour::measureInflight(IntDataVec intData)
 
     if (intData.size() == state->L.size()) {
         for (int i = 0; i < intData.size(); i++) {
-            IntMetaData *intDataEntry = intData.at(i);
+            const IntMetaData *intDataEntry = &intData.at(i);
             double uPrime = 0;
             bool isPastAck = false;
             int hopId = intDataEntry->getHopId();
@@ -83,16 +83,16 @@ double OrbtcpNewFlavour::measureInflight(IntDataVec intData)
 
             currPathId = tempBitArray;
 
-            if (intDataEntry->getHopId() == state->L.at(i)->getHopId() && intDataEntry->getAverageRtt() > 0) {
+            if (intDataEntry->getHopId() == state->L.at(i).getHopId() && intDataEntry->getAverageRtt() > 0) {
                 totalQueueingDelay += (double)intDataEntry->getRxQlen() / (double)intDataEntry->getB();
 
-                const double deltaTs = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
+                const double deltaTs = intDataEntry->getTs().dbl() - state->L.at(i).getTs().dbl();
                 if (deltaTs == 0)
                     continue;
 
-                const double hopTxRate = (intDataEntry->getTxBytes() - state->L.at(i)->getTxBytes()) / deltaTs;
+                const double hopTxRate = (intDataEntry->getTxBytes() - state->L.at(i).getTxBytes()) / deltaTs;
                 uPrime =
-                    (std::min(intDataEntry->getQLen(), state->L.at(i)->getQLen()) / (intDataEntry->getB() * intDataEntry->getAverageRtt())) +
+                    (std::min(intDataEntry->getQLen(), state->L.at(i).getQLen()) / (intDataEntry->getB() * intDataEntry->getAverageRtt())) +
                     (hopTxRate / intDataEntry->getB());
 
                 if (deltaTs < 0)
@@ -109,7 +109,7 @@ double OrbtcpNewFlavour::measureInflight(IntDataVec intData)
                     bottleneckRtt = deltaTs;
                     bottleneckTxRate = hopTxRate;
                     bottleneckIsPastAck = isPastAck;
-                    bottleneckTxBytes = intDataEntry->getTxBytes() - state->L.at(i)->getTxBytes();
+                    bottleneckTxBytes = intDataEntry->getTxBytes() - state->L.at(i).getTxBytes();
                     if (bottleneckAverageRtt <= 0) {
                         bottleneckAverageRtt = estimatedRtt.dbl();
                         EV_DEBUG << "bottleneckAverageRtt is lower or equal to 0!\n";

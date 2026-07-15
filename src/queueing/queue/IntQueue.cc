@@ -193,11 +193,11 @@ void IntQueue::pushPacket(Packet *packet, cGate *gate)
                     initialPhaseFlowIds.insert(tcpHeader->getTag<IntTag>()->getConnId());;
                 }
                 numOfFlowsInInitialPhase = initialPhaseFlowIds.size();
+
+                auto& intDataVector = tcpHeader->addTagIfAbsent<IntTag>()->getIntDataForUpdate();
+                intDataVector.emplace_back();
+                intDataVector.back().setRxQlen(queue.getByteLength());
             }
-            tcpHeader->addTagIfAbsent<IntTag>();
-            IntMetaData* intData = new IntMetaData();
-            intData->setRxQlen(queue.getByteLength());
-            tcpHeader->addTagIfAbsent<IntTag>()->getIntDataForUpdate().push_back(intData);
         }
 
         if(queue.getByteLength() < persistentQueueSize || changePersistentQueueSize){
@@ -264,24 +264,30 @@ Packet *IntQueue::pullPacket(cGate *gate)
     if(ipv4Header->getProtocolId() == 6){
         auto tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
         if(packet->getByteLength() > 0) { //Data Packet
-            IntMetaData* intData = tcpHeader->addTagIfAbsent<IntTag>()->getIntDataForUpdate().back();
             txBytes += packet->getByteLength();
             cSimpleModule::emit(txBytesSignal, txBytes);
-            intData->setAverageRtt(avgRtt.dbl());
-            intData->setNumOfFlows(numbOfFlows);
-            intData->setEffectiveNumOfFlows(effectiveNumOfFlows);
-            intData->setNumOfFlowsInInitialPhase(numOfFlowsInInitialPhase);
-            intData->setHopId(getParentModule()->getParentModule()->getId());
-            intData->setQLen(queue.getByteLength());
-            intData->setTs(simTime());
-            intData->setTxBytes(txBytes);
-            auto *networkInterface = dynamic_cast<NetworkInterface*>(getParentModule());
-            auto *rxTransmissionChannel = networkInterface ? networkInterface->getRxTransmissionChannel() : nullptr;
-            if (rxTransmissionChannel != nullptr)
-                intData->setB(rxTransmissionChannel->getNominalDatarate() / 8);
-            else
-                // Ground-station handovers can disconnect the gate before the queue is flushed.
-                intData->setB(bandwidth / 8);
+
+            if(tcpHeader->findTag<IntTag>()) {
+                auto& intDataVector = tcpHeader->addTagIfAbsent<IntTag>()->getIntDataForUpdate();
+                if(!intDataVector.empty()) {
+                    IntMetaData& intData = intDataVector.back();
+                    intData.setAverageRtt(avgRtt.dbl());
+                    intData.setNumOfFlows(numbOfFlows);
+                    intData.setEffectiveNumOfFlows(effectiveNumOfFlows);
+                    intData.setNumOfFlowsInInitialPhase(numOfFlowsInInitialPhase);
+                    intData.setHopId(getParentModule()->getParentModule()->getId());
+                    intData.setQLen(queue.getByteLength());
+                    intData.setTs(simTime());
+                    intData.setTxBytes(txBytes);
+                    auto *networkInterface = dynamic_cast<NetworkInterface*>(getParentModule());
+                    auto *rxTransmissionChannel = networkInterface ? networkInterface->getRxTransmissionChannel() : nullptr;
+                    if (rxTransmissionChannel != nullptr)
+                        intData.setB(rxTransmissionChannel->getNominalDatarate() / 8);
+                    else
+                        // Ground-station handovers can disconnect the gate before the queue is flushed.
+                        intData.setB(bandwidth / 8);
+                }
+            }
         }
         packet->insertAtFront(tcpHeader);
     }

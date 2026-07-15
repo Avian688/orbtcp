@@ -60,6 +60,7 @@ class OrbtcpFlavour : public OrbtcpFamily
     simtime_t rtt;
     simtime_t estimatedRtt;
     simtime_t smoothedEstimatedRtt;
+    int bottleneckId = -1;
 
     cMessage *reactTimer;
     cMessage *initReactTimer;
@@ -85,6 +86,9 @@ class OrbtcpFlavour : public OrbtcpFamily
     /** Enter or continue recovery after the connection's RACK detector marks loss. */
     virtual void rackLossDetected() override;
 
+    /** Allows subclasses to adjust the computed OrbCC additive increase before it is emitted and applied. */
+    virtual void adjustAdditiveIncrease() {}
+
   public:
     /** Constructor */
     OrbtcpFlavour();
@@ -102,6 +106,8 @@ class OrbtcpFlavour : public OrbtcpFamily
     virtual double measureInflight(IntDataVec intData);
 
     virtual size_t getConnId() override;
+
+    virtual int getBottleneckId() const;
 
     virtual simtime_t getRtt() override;
 

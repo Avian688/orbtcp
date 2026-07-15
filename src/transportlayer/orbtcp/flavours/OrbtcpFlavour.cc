@@ -5,6 +5,7 @@
 //
 
 #include <algorithm> // min,max
+#include <cmath>
 
 #include "inet/transportlayer/tcp/Tcp.h"
 #include "OrbtcpFlavour.h"
@@ -72,6 +73,7 @@ void OrbtcpFlavour::initialize()
     initPackets = false;
     pathChanged = false;
     pathId.clear();
+    bottleneckId = -1;
 
     state->alpha = conn->getTcpMain()->par("alpha");
     if(state->alpha > 0){
@@ -341,30 +343,35 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
 
 double OrbtcpFlavour::measureInflight(IntDataVec intData)
 {
-    TcpPacedConnection::RateSample rs = dynamic_cast<TcpPacedConnection*>(conn)->getRateSample();
+    if(intData.empty())
+        return 0;
+
+    // The first INT sample is only a baseline: a rate requires two queue
+    // counter/timestamp observations. Store it explicitly instead of relying
+    // on the initial U value to make the caller retain it.
+    if(state->L.size() != intData.size()){
+        state->L = intData;
+        return 0;
+    }
 
     double u = 0;
-    double tau;
-    double bottleneckAverageRtt;
-    double bottleneckBandwidth;
-    double bottleneckTxRate;
+    double tau = 0;
+    double bottleneckAverageRtt = 0;
+    double bottleneckBandwidth = 0;
+    double bottleneckTxRate = 0;
     double totalQueueingDelay = 0;
 
-    uint32_t bottleneckTxBytes;
-    double bottleneckRtt;
-    double bottleneckSharingFlows;
-    double bottleneckInitPhaseFlows;
-    uint32_t bottleneckQueueing;
-    bool bottleneckIsPastAck = false;
+    uint32_t bottleneckTxBytes = 0;
+    double bottleneckRtt = 0;
+    double bottleneckSharingFlows = 1;
+    int currentBottleneckId = -1;
+    bool foundBottleneck = false;
     std::vector<bool> currPathId(16);
 
-    bool sharedHop = false;
     if(intData.size() == state->L.size()){
         for(int i = 0; i < intData.size(); i++){ //Start at front of queue. First item is first hop etc.
-            IntMetaData* intDataEntry = intData.at(i);
+            const IntMetaData *intDataEntry = &intData.at(i);
             double uPrime = 0;
-            sharedHop = true;
-            bool isPastAck = false;
             int hopId = intDataEntry->getHopId();
             std::vector<bool> bitArray(16);
             std::vector<bool> tempBitArray(16);
@@ -380,43 +387,46 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
 
             currPathId = tempBitArray;
             if(i < state->L.size()) {
-                if(intDataEntry->getHopId() == state->L.at(i)->getHopId() && intDataEntry->getAverageRtt() > 0) {
-                    //std::bitset<1> b = (a1 ^= a2);
-                    totalQueueingDelay +=(double)intDataEntry->getRxQlen()/(double)intDataEntry->getB();
-                    //txRate is bytes observed at router between previous and current ACK packet subtracted from the timestamp of the previous and current ack. Equals estimated rate.
-                    double hopTxRate = (intDataEntry->getTxBytes() - state->L.at(i)->getTxBytes())/(intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl());
-                    uPrime = (std::min(intDataEntry->getQLen(), state->L.at(i)->getQLen())/(intDataEntry->getB()*intDataEntry->getAverageRtt()))+(hopTxRate/intDataEntry->getB());
-                    if(intDataEntry->getTs().dbl() < state->L.at(i)->getTs().dbl()) {
-                        isPastAck = true;
-                    }
+                if(intDataEntry->getHopId() == state->L.at(i).getHopId() && intDataEntry->getAverageRtt() > 0) {
+                    const double sampleInterval = intDataEntry->getTs().dbl() - state->L.at(i).getTs().dbl();
+                    const double bandwidth = intDataEntry->getB();
+                    if(sampleInterval <= 0 || bandwidth <= 0)
+                        continue;
 
-                    if(uPrime > u) {
+                    //std::bitset<1> b = (a1 ^= a2);
+                    totalQueueingDelay +=(double)intDataEntry->getRxQlen()/bandwidth;
+                    //txRate is bytes observed at router between previous and current ACK packet subtracted from the timestamp of the previous and current ack. Equals estimated rate.
+                    double hopTxRate = (intDataEntry->getTxBytes() - state->L.at(i).getTxBytes())/sampleInterval;
+                    uPrime = (std::min(intDataEntry->getQLen(), state->L.at(i).getQLen())/(bandwidth*intDataEntry->getAverageRtt()))+(hopTxRate/bandwidth);
+
+                    if(std::isfinite(uPrime) && uPrime > u) {
                         u = uPrime;
-                        tau = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
+                        tau = sampleInterval;
 
                         bottleneckSharingFlows = intDataEntry->getNumOfFlows();
-                        bottleneckInitPhaseFlows = intDataEntry->getNumOfFlowsInInitialPhase();
                         bottleneckAverageRtt = intDataEntry->getAverageRtt();
-                        bottleneckRtt = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
-                        bottleneckQueueing = (std::min(intDataEntry->getQLen(), state->L.at(i)->getQLen())/(intDataEntry->getB()*intDataEntry->getAverageRtt()));
+                        bottleneckRtt = sampleInterval;
                         bottleneckTxRate = hopTxRate;
-                        bottleneckIsPastAck = isPastAck;
-                        bottleneckTxBytes = intDataEntry->getTxBytes() - state->L.at(i)->getTxBytes();
-                        if(bottleneckAverageRtt <= 0){
-                            bottleneckAverageRtt = estimatedRtt.dbl();
-                            EV_DEBUG << "bottleneckAverageRtt is lower or equal to 0!\n";
-                        }
-                        bottleneckBandwidth = intDataEntry->getB();
+                        bottleneckTxBytes = intDataEntry->getTxBytes() - state->L.at(i).getTxBytes();
+                        bottleneckBandwidth = bandwidth;
+                        currentBottleneckId = hopId;
+                        foundBottleneck = true;
                     }
                 }
             }
         }
     }
 
+    // A first or stale INT sample cannot define a rate interval yet. Do not
+    // commit uninitialized bottleneck state; the caller retains this sample
+    // as the baseline for the next ACK.
+    if(!foundBottleneck)
+        return 0;
+
     if(!initReactTimer->isScheduled()){
         conn->scheduleAt(simTime() + bottleneckAverageRtt, initReactTimer);
     }
-    if(bottleneckIsPastAck || pathChanged){
+    if(pathChanged){
         return 0;
     }
 
@@ -427,12 +437,14 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
         //updateNext = true;
         pathId = currPathId;
         pathChanged = true;
-        //state->L = std::vector<IntMetaData*>(); //reset
+        bottleneckId = -1;
+        //state->L = IntDataVec(); //reset
         state->L = intData;
         return 0;
     }
 
     state->sharingFlows = std::max(1.0, bottleneckSharingFlows);
+    bottleneckId = currentBottleneckId;
 
 
     state->txRate = bottleneckTxRate;
@@ -447,10 +459,10 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     conn->emit(txBytesSignal, bottleneckTxBytes);
 
     if(state->useHpccAlpha){
-        state->alpha = tau/bottleneckAverageRtt;
+        state->alpha = std::clamp(tau/bottleneckAverageRtt, 0.0, 1.0);
     }
 
-    if(state->u == 0){
+    if(state->u == 0 || !std::isfinite(state->u)){
         state->u = u;
     }
 
@@ -472,16 +484,16 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
 
             //state->additiveIncrease = ((((bottleneckBandwidth)/std::max(1, state->initialPhaseSharingFlows)) * rtt.dbl()) * initAI);
 
-            //if(state->snd_cwnd + state->additiveIncrease > state->ssthresh){
-            state->additiveIncrease = state->ssthresh - state->snd_cwnd;
-                //state->endInitialPhase = true;
-            //}
+            state->additiveIncrease = state->ssthresh > state->snd_cwnd ?
+                    state->ssthresh - state->snd_cwnd : 0;
 
             //if(state->snd_cwnd >= state->ssthresh){
             state->endInitialPhase = true;
             //}
         }
     }
+
+    adjustAdditiveIncrease();
 
     conn->emit(testRttSignal, bottleneckRtt);
     conn->emit(bottleneckBandwidthSignal, bottleneckBandwidth);
@@ -517,6 +529,11 @@ uint32_t OrbtcpFlavour::computeWnd(double u, bool updateWc)
 size_t OrbtcpFlavour::getConnId()
 {
     return connId;
+}
+
+int OrbtcpFlavour::getBottleneckId() const
+{
+    return bottleneckId;
 }
 
 simtime_t OrbtcpFlavour::getRtt()

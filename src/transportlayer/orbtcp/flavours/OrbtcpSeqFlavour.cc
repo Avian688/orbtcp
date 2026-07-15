@@ -308,7 +308,7 @@ double OrbtcpSeqFlavour::measureInflight(IntDataVec intData)
     std::vector<bool> currPathId(16);
     for(int i = 0; i < intData.size(); i++){ //Start at front of queue. First item is first hop etc.
         double uPrime = 0;
-        IntMetaData* intDataEntry = intData.at(i);
+        const IntMetaData *intDataEntry = &intData.at(i);
         if(state->L.size() == intData.size()){ //TODO replace with check to ensure the hops are the same, maybe hopID? Look at paper/rfc
 
             bool isPastAck = false;
@@ -338,21 +338,21 @@ double OrbtcpSeqFlavour::measureInflight(IntDataVec intData)
                 //std::bitset<1> b = (a1 ^= a2);
                 totalQueueingDelay +=(double)intDataEntry->getRxQlen()/(double)intDataEntry->getB();
                 //txRate is bytes observed at router between prev and current ACK packet subtracted from the timestamp of the prev and current ack. Equals estimated rate.
-                double hopTxRate = (intDataEntry->getTxBytes() - state->L.at(i)->getTxBytes())/(intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl());
+                double hopTxRate = (intDataEntry->getTxBytes() - state->L.at(i).getTxBytes())/(intDataEntry->getTs().dbl() - state->L.at(i).getTs().dbl());
                 uPrime = (intDataEntry->getQLen())/(intDataEntry->getB()*intDataEntry->getAverageRtt())+(hopTxRate/intDataEntry->getB());
-                if(intDataEntry->getTs().dbl() < state->L.at(i)->getTs().dbl()) {
+                if(intDataEntry->getTs().dbl() < state->L.at(i).getTs().dbl()) {
                   //std::cout << "\n CURRENT ACK HOP TIMESTAMP IS OUT OF ORDER " << endl;
                     isPastAck = true;
                 }
 
                 if(uPrime > u) {
                     u = uPrime;
-                    tau = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
+                    tau = intDataEntry->getTs().dbl() - state->L.at(i).getTs().dbl();
 
                     bottleneckSharingFlows = intDataEntry->getNumOfFlows();
                     bottleneckInitPhaseFlows = intDataEntry->getNumOfFlowsInInitialPhase();
                     bottleneckAverageRtt = intDataEntry->getAverageRtt();
-                    bottleneckRtt = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
+                    bottleneckRtt = intDataEntry->getTs().dbl() - state->L.at(i).getTs().dbl();
                     bottleneckTxRate = hopTxRate;
                     bottleneckIsPastAck = isPastAck;
                     if(bottleneckAverageRtt <= 0){
@@ -507,4 +507,3 @@ void OrbtcpSeqFlavour::processRexmitTimer(TcpEventCode &event) {
 
 } // namespace tcp
 } // namespace inet
-

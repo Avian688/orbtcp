@@ -6,7 +6,7 @@ import inet.common.Units;
 namespace inet;
 
 cplusplus{{
-typedef std::vector<IntMetaData*> IntDataVec;
+typedef std::vector<IntMetaData> IntDataVec;
 }}
 
 class IntDataVec { @existingClass; }

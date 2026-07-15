@@ -315,7 +315,7 @@ double OrbtcpNoAvgRTTFlavour::measureInflight(IntDataVec intData)
     bool sharedHop = false;
     if(intData.size() == state->L.size()){
         for(int i = 0; i < intData.size(); i++){ //Start at front of queue. First item is first hop etc.
-            IntMetaData* intDataEntry = intData.at(i);
+            const IntMetaData *intDataEntry = &intData.at(i);
             double uPrime = 0;
             sharedHop = true;
             bool isPastAck = false;
@@ -334,28 +334,28 @@ double OrbtcpNoAvgRTTFlavour::measureInflight(IntDataVec intData)
 
             currPathId = tempBitArray;
             if(i < state->L.size()) {
-                if(intDataEntry->getHopId() == state->L.at(i)->getHopId() && intDataEntry->getAverageRtt() > 0) {
+                if(intDataEntry->getHopId() == state->L.at(i).getHopId() && intDataEntry->getAverageRtt() > 0) {
                     //std::bitset<1> b = (a1 ^= a2);
                     totalQueueingDelay +=(double)intDataEntry->getRxQlen()/(double)intDataEntry->getB();
                     //txRate is bytes observed at router between previous and current ACK packet subtracted from the timestamp of the previous and current ack. Equals estimated rate.
-                    double hopTxRate = (intDataEntry->getTxBytes() - state->L.at(i)->getTxBytes())/(intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl());
-                    uPrime = (std::min(intDataEntry->getQLen(), state->L.at(i)->getQLen())/(intDataEntry->getB()*rtt.dbl()))+(hopTxRate/intDataEntry->getB());
-                    if(intDataEntry->getTs().dbl() < state->L.at(i)->getTs().dbl()) {
+                    double hopTxRate = (intDataEntry->getTxBytes() - state->L.at(i).getTxBytes())/(intDataEntry->getTs().dbl() - state->L.at(i).getTs().dbl());
+                    uPrime = (std::min(intDataEntry->getQLen(), state->L.at(i).getQLen())/(intDataEntry->getB()*rtt.dbl()))+(hopTxRate/intDataEntry->getB());
+                    if(intDataEntry->getTs().dbl() < state->L.at(i).getTs().dbl()) {
                         isPastAck = true;
                     }
 
                     if(uPrime > u) {
                         u = uPrime;
-                        tau = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
+                        tau = intDataEntry->getTs().dbl() - state->L.at(i).getTs().dbl();
 
                         bottleneckSharingFlows = intDataEntry->getNumOfFlows();
                         bottleneckInitPhaseFlows = intDataEntry->getNumOfFlowsInInitialPhase();
                         bottleneckAverageRtt = intDataEntry->getAverageRtt();
-                        bottleneckRtt = intDataEntry->getTs().dbl() - state->L.at(i)->getTs().dbl();
-                        bottleneckQueueing = (std::min(intDataEntry->getQLen(), state->L.at(i)->getQLen())/(intDataEntry->getB()*rtt.dbl()));
+                        bottleneckRtt = intDataEntry->getTs().dbl() - state->L.at(i).getTs().dbl();
+                        bottleneckQueueing = (std::min(intDataEntry->getQLen(), state->L.at(i).getQLen())/(intDataEntry->getB()*rtt.dbl()));
                         bottleneckTxRate = hopTxRate;
                         bottleneckIsPastAck = isPastAck;
-                        bottleneckTxBytes = intDataEntry->getTxBytes() - state->L.at(i)->getTxBytes();
+                        bottleneckTxBytes = intDataEntry->getTxBytes() - state->L.at(i).getTxBytes();
                         if(bottleneckAverageRtt <= 0){
                             bottleneckAverageRtt = estimatedRtt.dbl();
                             EV_DEBUG << "bottleneckAverageRtt is lower or equal to 0!\n";
@@ -378,7 +378,7 @@ double OrbtcpNoAvgRTTFlavour::measureInflight(IntDataVec intData)
         //updateNext = true;
         pathId = currPathId;
         pathChanged = true;
-        //state->L = std::vector<IntMetaData*>(); //reset
+        //state->L = IntDataVec(); //reset
         state->L = intData;
         return 0;
     }
@@ -499,4 +499,3 @@ void OrbtcpNoAvgRTTFlavour::processTimer(cMessage *timer, TcpEventCode& event)
 
 } // namespace tcp
 } // namespace inet
-
