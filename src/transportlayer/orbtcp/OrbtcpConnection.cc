@@ -693,6 +693,8 @@ TcpEventCode OrbtcpConnection::processSegment1stThru8th(Packet *tcpSegment, cons
 bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const TcpHeader>& tcpHeader)
 {
     EV_DETAIL << "Processing ACK in a data transfer state\n";
+    const uint32_t newlySackedBytes = m_newlySackedBytesForAck;
+    m_newlySackedBytesForAck = 0;
     uint64_t previousDelivered = m_delivered;  //RATE SAMPLER SPECIFIC STUFF
     uint32_t previousLost = m_bytesLoss; //TODO Create Sack method to get exact amount of lost packets
     uint32_t priorInFlight = m_bytesInFlight;//get current BytesInFlight somehow
@@ -782,7 +784,7 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
                 }
             }
 
-            uint32_t currentDelivered  = m_delivered - previousDelivered;
+            uint32_t currentDelivered = newlySackedBytes + (m_delivered - previousDelivered);
             m_lastAckedSackedBytes = currentDelivered;
 
             updateInFlight();
@@ -901,7 +903,7 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
         // otherwise we would use an old ACKNo
         if (payloadLength == 0 && fsm.getState() != TCP_S_SYN_RCVD) {
 
-            uint32_t currentDelivered  = m_delivered - previousDelivered;
+            uint32_t currentDelivered = newlySackedBytes + (m_delivered - previousDelivered);
             m_lastAckedSackedBytes = currentDelivered;
 
             updateInFlight();

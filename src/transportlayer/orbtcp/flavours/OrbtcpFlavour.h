@@ -61,6 +61,7 @@ class OrbtcpFlavour : public OrbtcpFamily
     simtime_t estimatedRtt;
     simtime_t smoothedEstimatedRtt;
     int bottleneckId = -1;
+    double pathPrice = 0.0;
 
     cMessage *reactTimer;
     cMessage *initReactTimer;
@@ -108,6 +109,8 @@ class OrbtcpFlavour : public OrbtcpFamily
     virtual size_t getConnId() override;
 
     virtual int getBottleneckId() const;
+
+    virtual double getPathPrice() const;
 
     virtual simtime_t getRtt() override;
 

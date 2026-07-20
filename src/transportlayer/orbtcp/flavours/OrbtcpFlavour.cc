@@ -74,6 +74,7 @@ void OrbtcpFlavour::initialize()
     pathChanged = false;
     pathId.clear();
     bottleneckId = -1;
+    pathPrice = 0.0;
 
     state->alpha = conn->getTcpMain()->par("alpha");
     if(state->alpha > 0){
@@ -360,6 +361,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     double bottleneckBandwidth = 0;
     double bottleneckTxRate = 0;
     double totalQueueingDelay = 0;
+    double measuredPathPrice = 0;
 
     uint32_t bottleneckTxBytes = 0;
     double bottleneckRtt = 0;
@@ -398,6 +400,12 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
                     //txRate is bytes observed at router between previous and current ACK packet subtracted from the timestamp of the previous and current ack. Equals estimated rate.
                     double hopTxRate = (intDataEntry->getTxBytes() - state->L.at(i).getTxBytes())/sampleInterval;
                     uPrime = (std::min(intDataEntry->getQLen(), state->L.at(i).getQLen())/(bandwidth*intDataEntry->getAverageRtt()))+(hopTxRate/bandwidth);
+
+                    const double connectionCount = std::max(1.0,
+                            static_cast<double>(intDataEntry->getNumOfFlows()));
+                    const double fairRate = state->eta * bandwidth / connectionCount;
+                    if (state->eta > 0 && fairRate > 0 && std::isfinite(fairRate))
+                        measuredPathPrice += 1.0 / fairRate;
 
                     if(std::isfinite(uPrime) && uPrime > u) {
                         u = uPrime;
@@ -438,6 +446,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
         pathId = currPathId;
         pathChanged = true;
         bottleneckId = -1;
+        pathPrice = 0.0;
         //state->L = IntDataVec(); //reset
         state->L = intData;
         return 0;
@@ -450,6 +459,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
     state->txRate = bottleneckTxRate;
     state->bottBW = bottleneckBandwidth;
     state->queueingDelay = totalQueueingDelay;
+    pathPrice = measuredPathPrice;
 
     conn->emit(queueingDelaySignal, state->queueingDelay);
     conn->emit(avgEstimatedRttSignal, bottleneckAverageRtt);
@@ -534,6 +544,11 @@ size_t OrbtcpFlavour::getConnId()
 int OrbtcpFlavour::getBottleneckId() const
 {
     return bottleneckId;
+}
+
+double OrbtcpFlavour::getPathPrice() const
+{
+    return pathPrice;
 }
 
 simtime_t OrbtcpFlavour::getRtt()
