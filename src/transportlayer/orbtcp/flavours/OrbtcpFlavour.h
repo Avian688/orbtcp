@@ -16,6 +16,8 @@
 #ifndef TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPFLAVOUR_H_
 #define TRANSPORTLAYER_ORBTCP_FLAVOURS_ORBTCPFLAVOUR_H_
 
+#include <vector>
+
 #include "../../../common/IntTag_m.h"
 #include "../OrbtcpConnection.h"
 #include "OrbtcpFamily.h"
@@ -34,6 +36,14 @@ typedef OrbtcpFamilyStateVariables OrbtcpStateVariables;
 class OrbtcpFlavour : public OrbtcpFamily
 {
   protected:
+    struct IntHopMetrics {
+        int hopId = -1;
+        double utilization = 0.0;
+        double fairRate = 0.0;
+        double sampleInterval = 0.0;
+        double averageRtt = 0.0;
+    };
+
     OrbtcpStateVariables *& state;
 
     static simsignal_t txRateSignal; // will record load
@@ -61,7 +71,7 @@ class OrbtcpFlavour : public OrbtcpFamily
     simtime_t estimatedRtt;
     simtime_t smoothedEstimatedRtt;
     int bottleneckId = -1;
-    double pathPrice = 0.0;
+    std::vector<IntHopMetrics> pathHopMetrics;
 
     cMessage *reactTimer;
     cMessage *initReactTimer;
@@ -109,8 +119,6 @@ class OrbtcpFlavour : public OrbtcpFamily
     virtual size_t getConnId() override;
 
     virtual int getBottleneckId() const;
-
-    virtual double getPathPrice() const;
 
     virtual simtime_t getRtt() override;
 
