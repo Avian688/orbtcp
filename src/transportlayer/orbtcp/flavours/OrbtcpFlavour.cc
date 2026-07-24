@@ -23,6 +23,7 @@ simsignal_t OrbtcpFlavour::tauSignal = cComponent::registerSignal("tau");
 simsignal_t OrbtcpFlavour::uSignal = cComponent::registerSignal("u");
 simsignal_t OrbtcpFlavour::USignal = cComponent::registerSignal("U");
 simsignal_t OrbtcpFlavour::additiveIncreaseSignal = cComponent::registerSignal("additiveIncrease");
+simsignal_t OrbtcpFlavour::cwndLimitedSignal = cComponent::registerSignal("cwndLimited");
 simsignal_t OrbtcpFlavour::sharingFlowsSignal = cComponent::registerSignal("sharingFlows");
 simsignal_t OrbtcpFlavour::bottleneckBandwidthSignal = cComponent::registerSignal("bottleneckBandwidth");
 simsignal_t OrbtcpFlavour::avgRttSignal = cComponent::registerSignal("avgRtt");
@@ -98,6 +99,7 @@ void OrbtcpFlavour::established(bool active)
     connId = std::hash<std::string>{}(conn->localAddr.str() + "/" + std::to_string(conn->localPort) + "/" + conn->remoteAddr.str() + "/" + std::to_string(conn->remotePort));
     initPackets = true;
     EV_DETAIL << "OrbTCP initial CWND is set to " << state->snd_cwnd << "\n";
+    conn->emit(cwndLimitedSignal, false);
     if (active) {
         // finish connection setup with ACK (possibly piggybacked on data)
         EV_INFO << "Completing connection setup by sending ACK (possibly piggybacked on data)\n";
@@ -278,7 +280,7 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
                 conn->emit(recoveryPointSignal, state->recoveryPoint);
                 pacedConn->setSackedHeadLostIfRackDisabled();
                 pacedConn->updateInFlight();
-                setRecoveryCongestionWindow();
+                //setRecoveryCongestionWindow();
                 //std::cout << "\n Entering Loss recovery - dup acks > dupthresh at simTime: " << simTime().dbl() << endl;
                 EV_DETAIL << " recoveryPoint=" << state->recoveryPoint;
                 pacedConn->doRetransmit();
@@ -407,7 +409,7 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
                     if (state->eta > 0 && fairRate > 0 && std::isfinite(fairRate) &&
                             std::isfinite(uPrime))
                         measuredPathHopMetrics.push_back({hopId, uPrime, fairRate,
-                                sampleInterval, intDataEntry->getAverageRtt()});
+                                sampleInterval, intDataEntry->getAverageRtt(), bandwidth});
 
                     if(std::isfinite(uPrime) && uPrime > u) {
                         u = uPrime;
@@ -526,6 +528,10 @@ uint32_t OrbtcpFlavour::computeWnd(double u, bool updateWc)
         targetW = state->prevWnd + state->additiveIncrease;
     }
 
+    const bool cwndLimited = isCwndLimited();
+    targetW = limitCwndGrowth(targetW, cwndLimited);
+    conn->emit(cwndLimitedSignal, cwndLimited);
+
     if(updateWc) {
         updateWindow = false;
         state->prevWnd = targetW;
@@ -536,6 +542,34 @@ uint32_t OrbtcpFlavour::computeWnd(double u, bool updateWc)
     }
 
     return targetW;
+}
+
+bool OrbtcpFlavour::isCwndLimited() const
+{
+    const uint32_t sendableCwnd = getSendableCwnd();
+    if (sendableCwnd == 0)
+        return false;
+
+    auto *pacedConnection = dynamic_cast<TcpPacedConnection *>(conn);
+    return pacedConnection != nullptr &&
+            pacedConnection->isCwndLimited(sendableCwnd);
+}
+
+uint32_t OrbtcpFlavour::getSendableCwnd() const
+{
+    if (state == nullptr || state->snd_mss == 0 || state->snd_cwnd == 0)
+        return 0;
+
+    const uint32_t cwndPackets = std::max(state->snd_cwnd / state->snd_mss, 1U);
+    return cwndPackets * state->snd_mss;
+}
+
+uint32_t OrbtcpFlavour::limitCwndGrowth(uint32_t targetWnd, bool cwndLimited) const
+{
+    if (state == nullptr || cwndLimited)
+        return targetWnd;
+
+    return std::min(targetWnd, state->snd_cwnd);
 }
 
 size_t OrbtcpFlavour::getConnId()

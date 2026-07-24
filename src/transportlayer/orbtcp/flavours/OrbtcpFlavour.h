@@ -42,6 +42,7 @@ class OrbtcpFlavour : public OrbtcpFamily
         double fairRate = 0.0;
         double sampleInterval = 0.0;
         double averageRtt = 0.0;
+        double bandwidth = 0.0;
     };
 
     OrbtcpStateVariables *& state;
@@ -51,6 +52,7 @@ class OrbtcpFlavour : public OrbtcpFamily
     static simsignal_t uSignal;
     static simsignal_t USignal;
     static simsignal_t additiveIncreaseSignal;
+    static simsignal_t cwndLimitedSignal;
     static simsignal_t sharingFlowsSignal;
     static simsignal_t bottleneckBandwidthSignal;
     static simsignal_t avgRttSignal;
@@ -99,6 +101,15 @@ class OrbtcpFlavour : public OrbtcpFamily
 
     /** Allows subclasses to adjust the computed OrbCC additive increase before it is emitted and applied. */
     virtual void adjustAdditiveIncrease() {}
+
+    /** Whether queued demand is currently filling this connection's congestion window. */
+    virtual bool isCwndLimited() const;
+
+    /** Congestion window rounded down to the number of complete MSS-sized packets it can send. */
+    virtual uint32_t getSendableCwnd() const;
+
+    /** Prevent application- or scheduler-limited ACKs from growing the congestion window. */
+    virtual uint32_t limitCwndGrowth(uint32_t targetWnd, bool cwndLimited) const;
 
   public:
     /** Constructor */
