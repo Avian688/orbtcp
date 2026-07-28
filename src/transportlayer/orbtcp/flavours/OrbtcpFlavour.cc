@@ -201,8 +201,6 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
         // (B.2) Use SetPipe () to re-calculate the number of octets still
         // in the network."
         else {
-            dynamic_cast<TcpPacedConnection*>(conn)->doRetransmit();
-            //sendData(false);
             // update of scoreboard (B.1) has already be done in readHeaderOptions()
             //conn->setPipe();
         }
@@ -283,7 +281,6 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
                 //setRecoveryCongestionWindow();
                 //std::cout << "\n Entering Loss recovery - dup acks > dupthresh at simTime: " << simTime().dbl() << endl;
                 EV_DETAIL << " recoveryPoint=" << state->recoveryPoint;
-                pacedConn->doRetransmit();
                 //conn->rescheduleAt(simTime() + state->srtt.dbl(), reactTimer);
 
                 //sendData(false);
@@ -295,13 +292,6 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
         // Do not restart REXMIT timer.
         // Note: Restart of REXMIT timer on retransmission is not part of RFC 2581, however optional in RFC 3517 if sent during recovery.
         // Resetting the REXMIT timer is discussed in RFC 2582/3782 (NewReno) and RFC 2988.
-
-        if (state->sack_enabled) {
-            if (state->lossRecovery) {
-                EV_INFO << "Retransmission sent during recovery, restarting REXMIT timer.\n";
-                restartRexmitTimer();
-            }
-        }
 
     }
     else if (state->lossRecovery && state->dupacks > state->dupthresh)

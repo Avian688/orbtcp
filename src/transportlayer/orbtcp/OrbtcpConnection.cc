@@ -756,11 +756,6 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             // could have been changed if faulty data receiver is not respecting the "do not shrink window" rule
             if (rack_enabled)
             {
-                if (!scoreboardUpdated && rexmitQueue->findRegion(tcpHeader->getAckNo()))
-                    rackAdvance(tcpHeader->getAckNo(), tcpHeader);
-                else
-                    rackAdvance(rexmitQueue->getHighestSackedSeqNum(), tcpHeader);
-
                 const bool inLossState = state->lossRecovery || isInRtoRecovery();
                 const bool exiting = inLossState &&
                         seqGE(tcpHeader->getAckNo(), getPacedAlgorithm()->getRecoveryPoint());
@@ -768,7 +763,6 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
                         rexmitQueue->getTotalAmountOfSackedBytes(), 3, state->snd_mss,
                         exiting, inLossState);
             }
-            scoreboardUpdated = false;
             // we need to update send window even if the ACK is a dupACK, because rcv win
             // could have been changed if faulty data receiver is not respecting the "do not shrink window" rule
             updateWndInfo(tcpHeader);
@@ -776,7 +770,7 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             if (rexmitQueue->isUpdatedSackEnabled()) {
                 std::list<uint32_t> skbDeliveredList = rexmitQueue->getDiscardList(tcpHeader->getAckNo());
                 for (uint32_t endSeqNo : skbDeliveredList) {
-                    bool wasRetransmitted = rexmitQueue->isRetransmitted(endSeqNo);
+                    bool wasRetransmitted = rexmitQueue->getRegion(endSeqNo).everRetransmitted;
                     rackAdvance(endSeqNo, tcpHeader);
                     skbDelivered(endSeqNo);
                     if ((fack_enabled || rack_enabled) && seqLess(endSeqNo, m_sndFack) && !wasRetransmitted)
@@ -859,11 +853,6 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
 
         if (rack_enabled)
         {
-            if (!scoreboardUpdated && rexmitQueue->findRegion(tcpHeader->getAckNo()))
-                rackAdvance(tcpHeader->getAckNo(), tcpHeader);
-            else
-                rackAdvance(rexmitQueue->getHighestSackedSeqNum(), tcpHeader);
-
             const bool inLossState = state->lossRecovery || isInRtoRecovery();
             const bool exiting = inLossState &&
                     seqGE(state->snd_una, getPacedAlgorithm()->getRecoveryPoint());
@@ -871,14 +860,13 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
                     rexmitQueue->getTotalAmountOfSackedBytes(), 3, state->snd_mss,
                     exiting, inLossState);
         }
-        scoreboardUpdated = false;
         // acked data no longer needed in send queue
 
         // acked data no longer needed in rexmit queue
         if (rexmitQueue->isUpdatedSackEnabled()) {
             std::list<uint32_t> skbDeliveredList = rexmitQueue->getDiscardList(discardUpToSeq);
             for (uint32_t endSeqNo : skbDeliveredList) {
-                bool wasRetransmitted = rexmitQueue->isRetransmitted(endSeqNo);
+                bool wasRetransmitted = rexmitQueue->getRegion(endSeqNo).everRetransmitted;
                 rackAdvance(endSeqNo, tcpHeader);
                 skbDelivered(endSeqNo);
                 if (state->lossRecovery && rexmitQueue->isRetransmittedDataAcked(endSeqNo))
