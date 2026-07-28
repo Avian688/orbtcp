@@ -29,6 +29,7 @@ O = $(PROJECT_OUTPUT_DIR)/$(CONFIGNAME)/$(PROJECTRELATIVE_PATH)
 OBJS = \
     $O/networklayer/configurator/ipv4/Ipv4NetworkConfiguratorUpdate.o \
     $O/queueing/queue/IntQueue.o \
+    $O/queueing/queue/PintQueue.o \
     $O/transportlayer/orbtcp/Orbtcp.o \
     $O/transportlayer/orbtcp/OrbtcpConnection.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpFamily.o \
@@ -38,6 +39,7 @@ OBJS = \
     $O/transportlayer/orbtcp/flavours/OrbtcpNoEstRTTFlavour.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpNoInitFlowsFlavour.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpNoSharedFlowsFlavour.o \
+    $O/transportlayer/orbtcp/flavours/OrbtcpPintFlavour.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpSeqFlavour.o \
     $O/common/IntTag_m.o \
     $O/transportlayer/orbtcp/flavours/OrbtcpFamilyState_m.o

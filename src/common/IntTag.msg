@@ -27,6 +27,11 @@ class IntMetaData extends cObject
 	double effectiveNumOfFlows;
 	long rxQlen; // RX Queue Length
 	int numOfFlowsInInitialPhase;
+	bool pintValid = false;
+	int pintPower; // Conceptual encoded PINT field
+	double pintUtilization; // Decoded simulation value, not additional modeled wire overhead
+	unsigned int pathDigest;
+	double accumulatedQueueingDelay;
 }
 
 class IntTag extends TagBase

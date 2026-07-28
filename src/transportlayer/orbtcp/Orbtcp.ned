@@ -28,4 +28,5 @@ simple Orbtcp extends TcpPaced
         double additiveIncreasePercent = default(0.05);
         double eta = default(0.95);
         double alpha = default (0.03);
+        double pintFeedbackProbability = default(1);
 }
