@@ -49,10 +49,6 @@ simple PintQueue extends PacketQueue
         double fixedAvgRTTVal @unit(s) = default(0s);
         double pintInitialRtt @unit(s) = default(10ms);
 
-        int minActiveFlowBytes = default(2896);
-        double activeFlowThresholdFraction = default(0.005);
-        int flowSketchWidth = default(2048);
-        int flowSketchDepth = default(3);
         int flowCardinalityBits = default(4096);
         int flowSketchSeed = default(1337);
 

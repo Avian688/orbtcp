@@ -16,7 +16,7 @@
 #ifndef QUEUEING_QUEUE_INTQUEUE_H_
 #define QUEUEING_QUEUE_INTQUEUE_H_
 
-#include <map>
+#include <set>
 #include "inet/queueing/queue/PacketQueue.h"
 
 namespace inet {
@@ -46,15 +46,12 @@ protected:
     cMessage *averageRttTimerMsg = nullptr;
     //std::map<std::string, simtime_t> rtts;
     std::set<long> flowIds;
-    std::map<long, long long> flowByteCounts;
     std::set<long> initialPhaseFlowIds;
     double sumRttByCwnd;
     double sumRttSquareByCwnd;
     long persistentQueueSize;
     bool changePersistentQueueSize;
     double fixedAvgRTTVal;
-    int minActiveFlowBytes;
-    double activeFlowThresholdFraction;
 
 protected:
     virtual void initialize(int stage) override;

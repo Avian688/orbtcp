@@ -47,24 +47,18 @@ class PintQueue : public PacketQueue
     double sumRttSquareByCwnd = 0;
     double pintUtilization = 0;
     double pintLogBase = 1.05;
-    double activeFlowThresholdFraction = 0;
-    double currentActiveFlowThresholdBytes = 0;
 
     uint64_t txBytes = 0;
     uint64_t flowSketchSeed = 0;
 
     int numberOfFlows = 1;
     int numberOfInitialPhaseFlows = 0;
-    int minActiveFlowBytes = 0;
-    int flowSketchWidth = 0;
-    int flowSketchDepth = 0;
     int flowCardinalityBits = 0;
     int pintBits = 8;
     int pintMaxConcurrentFlows = 512;
 
     bool hasPintSample = false;
 
-    std::vector<uint64_t> flowByteSketch;
     std::vector<uint64_t> activeFlowBitmap;
     std::vector<uint64_t> initialPhaseFlowBitmap;
 
@@ -76,12 +70,10 @@ class PintQueue : public PacketQueue
     virtual void scheduleMeasurementTimer();
 
     virtual double getLinkBandwidthBytesPerSecond() const;
-    virtual double calculateActiveFlowThreshold(double bandwidthBytesPerSecond) const;
 
-    virtual uint64_t updateFlowByteEstimate(uint64_t flowId, uint64_t packetBytes);
     virtual void markFlow(std::vector<uint64_t>& bitmap, uint64_t flowId);
     virtual double estimateFlowCount(const std::vector<uint64_t>& bitmap) const;
-    virtual void resetFlowSketches();
+    virtual void resetFlowCounters();
 
     virtual double updatePintUtilization(uint64_t packetBytes, uint64_t queueBytes,
             double bandwidthBytesPerSecond);

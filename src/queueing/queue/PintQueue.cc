@@ -54,10 +54,6 @@ void PintQueue::initialize(int stage)
     fallbackBandwidthBitsPerSecond = par("fallbackBandwidth").doubleValue();
     fixedAvgRtt = par("fixedAvgRTTVal");
     pintInitialRtt = par("pintInitialRtt");
-    minActiveFlowBytes = par("minActiveFlowBytes");
-    activeFlowThresholdFraction = par("activeFlowThresholdFraction");
-    flowSketchWidth = par("flowSketchWidth");
-    flowSketchDepth = par("flowSketchDepth");
     flowCardinalityBits = par("flowCardinalityBits");
     flowSketchSeed = static_cast<uint64_t>(par("flowSketchSeed").intValue());
     pintBits = par("pintBits");
@@ -68,8 +64,8 @@ void PintQueue::initialize(int stage)
         throw cRuntimeError("pintInitialRtt must be positive");
     if (fallbackBandwidthBitsPerSecond <= 0)
         throw cRuntimeError("fallbackBandwidth must be positive");
-    if (flowSketchWidth <= 0 || flowSketchDepth <= 0 || flowCardinalityBits <= 0)
-        throw cRuntimeError("PINT flow sketch dimensions must be positive");
+    if (flowCardinalityBits <= 0)
+        throw cRuntimeError("PINT flow counter size must be positive");
     if (pintBits <= 0 || pintBits > 16)
         throw cRuntimeError("pintBits must be in the range [1, 16]");
     if (pintLogBase <= 1 || pintMaxConcurrentFlows <= 0)
@@ -79,13 +75,9 @@ void PintQueue::initialize(int stage)
     measurementInterval = avgRtt;
     lastPintUpdate = SIMTIME_ZERO;
 
-    flowByteSketch.assign(flowSketchWidth * flowSketchDepth, 0);
     const int bitmapWords = (flowCardinalityBits + 63) / 64;
     activeFlowBitmap.assign(bitmapWords, 0);
     initialPhaseFlowBitmap.assign(bitmapWords, 0);
-
-    currentActiveFlowThresholdBytes =
-            calculateActiveFlowThreshold(fallbackBandwidthBitsPerSecond / 8.0);
 
     measurementTimer = new cMessage("PINT measurement timer");
 
@@ -132,11 +124,9 @@ void PintQueue::processMeasurementTimer()
 
     sumRttByCwnd = 0;
     sumRttSquareByCwnd = 0;
-    resetFlowSketches();
+    resetFlowCounters();
 
     measurementInterval = avgRtt;
-    currentActiveFlowThresholdBytes =
-            calculateActiveFlowThreshold(bandwidthBytesPerSecond);
     scheduleMeasurementTimer();
 }
 
@@ -154,31 +144,6 @@ double PintQueue::getLinkBandwidthBytesPerSecond() const
     if (channel != nullptr && channel->getNominalDatarate() > 0)
         return channel->getNominalDatarate() / 8.0;
     return fallbackBandwidthBitsPerSecond / 8.0;
-}
-
-double PintQueue::calculateActiveFlowThreshold(double bandwidthBytesPerSecond) const
-{
-    const double rateThreshold = activeFlowThresholdFraction *
-            bandwidthBytesPerSecond * measurementInterval.dbl();
-    return std::max(static_cast<double>(minActiveFlowBytes), rateThreshold);
-}
-
-uint64_t PintQueue::updateFlowByteEstimate(uint64_t flowId, uint64_t packetBytes)
-{
-    uint64_t estimate = std::numeric_limits<uint64_t>::max();
-    for (int row = 0; row < flowSketchDepth; ++row) {
-        const uint64_t rowHash = mixHash(flowId ^ flowSketchSeed ^
-                (0x9e3779b97f4a7c15ULL * static_cast<uint64_t>(row + 1)));
-        const size_t index = static_cast<size_t>(row) * flowSketchWidth +
-                rowHash % static_cast<uint64_t>(flowSketchWidth);
-        uint64_t& counter = flowByteSketch[index];
-        if (std::numeric_limits<uint64_t>::max() - counter < packetBytes)
-            counter = std::numeric_limits<uint64_t>::max();
-        else
-            counter += packetBytes;
-        estimate = std::min(estimate, counter);
-    }
-    return estimate;
 }
 
 void PintQueue::markFlow(std::vector<uint64_t>& bitmap, uint64_t flowId)
@@ -205,9 +170,8 @@ double PintQueue::estimateFlowCount(const std::vector<uint64_t>& bitmap) const
             std::log(static_cast<double>(zeroBits) / flowCardinalityBits);
 }
 
-void PintQueue::resetFlowSketches()
+void PintQueue::resetFlowCounters()
 {
-    std::fill(flowByteSketch.begin(), flowByteSketch.end(), 0);
     std::fill(activeFlowBitmap.begin(), activeFlowBitmap.end(), 0);
     std::fill(initialPhaseFlowBitmap.begin(), initialPhaseFlowBitmap.end(), 0);
 }
@@ -307,13 +271,9 @@ void PintQueue::pushPacket(Packet *packet, cGate *gate)
                         intTag->getRtt().dbl() * weight;
             }
 
-            const uint64_t byteEstimate =
-                    updateFlowByteEstimate(flowId, packetBytesAtQueue);
-            if (byteEstimate >= currentActiveFlowThresholdBytes) {
-                markFlow(activeFlowBitmap, flowId);
-                if (intTag->getInitialPhase())
-                    markFlow(initialPhaseFlowBitmap, flowId);
-            }
+            markFlow(activeFlowBitmap, flowId);
+            if (intTag->getInitialPhase())
+                markFlow(initialPhaseFlowBitmap, flowId);
 
             auto& intData = intTag->getIntDataForUpdate();
             if (intData.empty())

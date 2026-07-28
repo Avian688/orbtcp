@@ -45,7 +45,5 @@ simple IntQueue extends PacketQueue
    		
         packetCapacity @mutable = default(100);
         double fixedAvgRTTVal = default(0);
-        int minActiveFlowBytes = default(2896);
-        double activeFlowThresholdFraction = default(0.005);
         dropperClass = default("inet::queueing::PacketAtCollectionEndDropper");
 }

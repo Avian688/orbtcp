@@ -65,8 +65,6 @@ void IntQueue::initialize(int stage)
     avgRttTimer = SimTime(10, SIMTIME_MS);
     bandwidthRecorderTimer = SimTime(500, SIMTIME_MS);
     fixedAvgRTTVal = par("fixedAvgRTTVal");
-    minActiveFlowBytes = par("minActiveFlowBytes");
-    activeFlowThresholdFraction = par("activeFlowThresholdFraction");
     if (stage == INITSTAGE_TRANSPORT_LAYER) {
         averageRttTimerMsg = new cMessage("averageRttTimerMsg");
         averageRttTimerMsg->setContextPointer(this);
@@ -111,29 +109,12 @@ void IntQueue::processTimer()
             avgRtt = SimTime(sumRttSquareByCwnd/sumRttByCwnd);
         }
         numbOfFlows = flowIds.size();
-        const double intervalSeconds = std::max(0.0, avgRttTimer.dbl());
-        const double minBytesByRate = bytesPerSecond > 0 ? activeFlowThresholdFraction * bytesPerSecond * intervalSeconds : 0;
-        const double activeFlowThreshold = std::max(static_cast<double>(minActiveFlowBytes), minBytesByRate);
-        double totalQualifiedBytes = 0;
-        double totalQualifiedBytesSquared = 0;
-        int qualifiedFlowCount = 0;
-        for (const auto& entry : flowByteCounts) {
-            if (entry.second < activeFlowThreshold)
-                continue;
-            qualifiedFlowCount++;
-            totalQualifiedBytes += entry.second;
-            totalQualifiedBytesSquared += static_cast<double>(entry.second) * entry.second;
-        }
-        if (totalQualifiedBytesSquared > 0)
-            effectiveNumOfFlows = std::max(1.0, (totalQualifiedBytes * totalQualifiedBytes) / totalQualifiedBytesSquared);
-        else
-            effectiveNumOfFlows = std::max(1, qualifiedFlowCount);
+        effectiveNumOfFlows = std::max(1, numbOfFlows);
 
         sumRttSquareByCwnd = 0;
         sumRttByCwnd = 0;
         changePersistentQueueSize = true;
         flowIds.clear();
-        flowByteCounts.clear();
         initialPhaseFlowIds.clear();
         cSimpleModule::emit(avgRttSignal, avgRtt);
         cSimpleModule::emit(numberOfFlowsSignal, numbOfFlows);
@@ -187,7 +168,6 @@ void IntQueue::pushPacket(Packet *packet, cGate *gate)
                     sumRttSquareByCwnd += tcpHeader->getTag<IntTag>()->getRtt().dbl() * tcpHeader->getTag<IntTag>()->getRtt().dbl() * packet->getByteLength() / tcpHeader->getTag<IntTag>()->getCwnd();
                 }
                 flowIds.insert(tcpHeader->getTag<IntTag>()->getConnId());
-                flowByteCounts[tcpHeader->getTag<IntTag>()->getConnId()] += packet->getByteLength();
 
                 if(tcpHeader->getTag<IntTag>()->getInitialPhase()){ //if in initial phase and not in current flow list, increment numberOfFlowsInInitialPhase
                     initialPhaseFlowIds.insert(tcpHeader->getTag<IntTag>()->getConnId());;
