@@ -693,11 +693,13 @@ TcpEventCode OrbtcpConnection::processSegment1stThru8th(Packet *tcpSegment, cons
 bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const TcpHeader>& tcpHeader)
 {
     EV_DETAIL << "Processing ACK in a data transfer state\n";
+    // Options are parsed before this callback. Preserve delivery recorded
+    // while parsing this ACK's SACK blocks for rate sampling and PRR.
     const uint32_t newlySackedBytes = m_newlySackedBytesForAck;
     m_newlySackedBytesForAck = 0;
-    uint64_t previousDelivered = m_delivered;  //RATE SAMPLER SPECIFIC STUFF
-    uint32_t previousLost = m_bytesLoss; //TODO Create Sack method to get exact amount of lost packets
-    uint32_t priorInFlight = m_bytesInFlight;//get current BytesInFlight somehow
+    uint64_t previousDelivered = m_delivered;
+    uint64_t previousTotalDetectedLostBytes = getTotalDetectedLostBytes();
+    uint32_t priorInFlight = m_bytesInFlight;
     int payloadLength = tcpSegment->getByteLength() - B(tcpHeader->getHeaderLength()).get();
     beginRateSample();
 
@@ -709,6 +711,16 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
 
         state->gotEce = tcpHeader->getEceBit();
     }
+
+    const bool sackOptionSeen = m_sackOptionSeenForAck;
+    const bool tlpDsackSeen = m_tlpDsackSeenForProbe;
+    m_sackOptionSeenForAck = false;
+    m_tlpDsackSeenForProbe = false;
+
+    const bool pureDuplicateAck = state->snd_una == tcpHeader->getAckNo() &&
+            payloadLength == 0 && !sackOptionSeen;
+    const bool tlpRecoveredLoss =
+            processTailLossProbeAck(tcpHeader->getAckNo(), pureDuplicateAck, tlpDsackSeen);
 
     //
     //"
@@ -770,31 +782,27 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             if (rexmitQueue->isUpdatedSackEnabled()) {
                 std::list<uint32_t> skbDeliveredList = rexmitQueue->getDiscardList(tcpHeader->getAckNo());
                 for (uint32_t endSeqNo : skbDeliveredList) {
-                    bool wasRetransmitted = rexmitQueue->getRegion(endSeqNo).everRetransmitted;
                     rackAdvance(endSeqNo, tcpHeader);
                     skbDelivered(endSeqNo);
-                    if ((fack_enabled || rack_enabled) && seqLess(endSeqNo, m_sndFack) && !wasRetransmitted)
-                        m_reorder = true;
                 }
             }
 
             uint32_t currentDelivered = newlySackedBytes + (m_delivered - previousDelivered);
             m_lastAckedSackedBytes = currentDelivered;
 
-            updateInFlight();
-
-            uint32_t currentLost = m_bytesLoss;
-            uint32_t lost = (currentLost > previousLost) ? currentLost - previousLost : 0;
-
-            updateSample(currentDelivered, lost, false, priorInFlight, connMinRtt);
-
             bool newRackLoss = false;
             bool rackRecovery = checkRackLoss(&newRackLoss);
-            if (shouldApplyRackCongestionResponse() && (rackRecovery || newRackLoss))
+            updateInFlight();
+
+            uint32_t lost = getNewlyDetectedLostBytes(
+                    previousTotalDetectedLostBytes, newRackLoss || tlpRecoveredLoss);
+            updateSample(currentDelivered, lost, false, priorInFlight, connMinRtt);
+
+            if (shouldApplyRackCongestionResponse() &&
+                    (rackRecovery || newRackLoss || tlpRecoveredLoss))
                 getPacedAlgorithm()->rackLossDetected();
 
             if(tcpHeader->findTag<IntTag>()){
-                IntDataVec intDataNew = tcpHeader->getTag<IntTag>()->getIntData();
                 dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->receivedDuplicateAck(state->snd_una, tcpHeader->getTag<IntTag>()->getIntData());
             }
             else{
@@ -866,7 +874,7 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
         if (rexmitQueue->isUpdatedSackEnabled()) {
             std::list<uint32_t> skbDeliveredList = rexmitQueue->getDiscardList(discardUpToSeq);
             for (uint32_t endSeqNo : skbDeliveredList) {
-                bool wasRetransmitted = rexmitQueue->getRegion(endSeqNo).everRetransmitted;
+                bool wasRetransmitted = rexmitQueue->isRetransmitted(endSeqNo);
                 rackAdvance(endSeqNo, tcpHeader);
                 skbDelivered(endSeqNo);
                 if (state->lossRecovery && rexmitQueue->isRetransmittedDataAcked(endSeqNo))
@@ -894,20 +902,19 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             uint32_t currentDelivered = newlySackedBytes + (m_delivered - previousDelivered);
             m_lastAckedSackedBytes = currentDelivered;
 
-            updateInFlight();
-
-            uint32_t currentLost = m_bytesLoss;
-            uint32_t lost = (currentLost > previousLost) ? currentLost - previousLost : 0;
-
-            updateSample(currentDelivered, lost, false, priorInFlight, connMinRtt);
-
             bool newRackLoss = false;
             bool rackRecovery = checkRackLoss(&newRackLoss);
-            if (shouldApplyRackCongestionResponse() && (rackRecovery || newRackLoss))
+            updateInFlight();
+
+            uint32_t lost = getNewlyDetectedLostBytes(
+                    previousTotalDetectedLostBytes, newRackLoss || tlpRecoveredLoss);
+            updateSample(currentDelivered, lost, false, priorInFlight, connMinRtt);
+
+            if (shouldApplyRackCongestionResponse() &&
+                    (rackRecovery || newRackLoss || tlpRecoveredLoss))
                 getPacedAlgorithm()->rackLossDetected();
 
             if(tcpHeader->findTag<IntTag>()){
-                IntDataVec intDataNew = tcpHeader->getTag<IntTag>()->getIntData();
                 dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->receivedDataAck(old_snd_una, tcpHeader->getTag<IntTag>()->getIntData());
             }
             else{
@@ -930,6 +937,7 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             emit(dupAcksSignal, state->dupacks);
             emit(mDeliveredSignal, m_delivered);
         }
+        scheduleTailLossProbe();
     }
     else {
         ASSERT(seqGreater(tcpHeader->getAckNo(), state->snd_max)); // from if-ladder
