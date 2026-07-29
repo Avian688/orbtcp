@@ -53,12 +53,10 @@ double OrbtcpPintFlavour::measureInflight(IntDataVec intData)
         pathChanged = true;
         bottleneckId = -1;
         pathHopMetrics.clear();
+        lastPintFeedback = SIMTIME_ZERO;
         state->L = intData;
-        return 0;
+        return state->u;
     }
-
-    if (pathChanged)
-        return 0;
 
     const double utilization = pintData.getPintUtilization();
     const double bottleneckBandwidth = pintData.getB();

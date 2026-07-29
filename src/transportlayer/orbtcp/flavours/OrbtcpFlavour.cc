@@ -205,21 +205,14 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
             //conn->setPipe();
         }
         conn->emit(recoveryPointSignal, state->recoveryPoint);
-
-        conn->emit(cwndSignal, state->snd_cwnd);
-        if (!reactTimer->isScheduled())
-            conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
-        conn->emit(sndUnaSignal, state->snd_una);
-        conn->emit(sndMaxSignal, state->snd_max);
-        return;
+        // Route changes can trigger recovery; still consume INT feedback so
+        // OrbCC can install the new path state instead of freezing cwnd.
     }
 
     double uVal = measureInflight(intData);
 
     if(uVal > 0) {
-        if(!pathChanged){
-            state->snd_cwnd = computeWnd(uVal, updateWindow);
-        }
+        state->snd_cwnd = computeWnd(uVal, updateWindow);
         state->L = intData;
     }
 
@@ -308,14 +301,12 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
         }
         if (!reactTimer->isScheduled())
             conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
-        return;
+        // Continue into OrbCC feedback handling as in the original flavour.
     }
 
     double uVal = measureInflight(intData);
     if(uVal > 0) {
-        if(!pathChanged){
-            state->snd_cwnd = computeWnd(uVal, updateWindow);
-        }
+        state->snd_cwnd = computeWnd(uVal, updateWindow);
         state->L = intData;
     }
     conn->emit(cwndSignal, state->snd_cwnd);
@@ -419,6 +410,20 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
         }
     }
 
+    if(pathId.empty()) {
+        pathId = currPathId;
+    }
+    else if((pathId != currPathId)){
+        // Install the first sample from the new route as the next baseline.
+        // The previous U keeps the control loop alive for this transition ACK.
+        pathId = currPathId;
+        pathChanged = true;
+        bottleneckId = -1;
+        pathHopMetrics.clear();
+        state->L = intData;
+        return state->u;
+    }
+
     // A first or stale INT sample cannot define a rate interval yet. Do not
     // commit uninitialized bottleneck state; the caller retains this sample
     // as the baseline for the next ACK.
@@ -427,23 +432,6 @@ double OrbtcpFlavour::measureInflight(IntDataVec intData)
 
     if(!initReactTimer->isScheduled()){
         conn->scheduleAt(simTime() + bottleneckAverageRtt, initReactTimer);
-    }
-    if(pathChanged){
-        return 0;
-    }
-
-    if(pathId.empty()) {
-        pathId = currPathId;
-    }
-    else if((pathId != currPathId)){
-        //updateNext = true;
-        pathId = currPathId;
-        pathChanged = true;
-        bottleneckId = -1;
-        pathHopMetrics.clear();
-        //state->L = IntDataVec(); //reset
-        state->L = intData;
-        return 0;
     }
 
     state->sharingFlows = std::max(1.0, bottleneckSharingFlows);
