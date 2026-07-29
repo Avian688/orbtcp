@@ -111,6 +111,9 @@ class OrbtcpFlavour : public OrbtcpFamily
     /** Prevent application- or scheduler-limited ACKs from growing the congestion window. */
     virtual uint32_t limitCwndGrowth(uint32_t targetWnd, bool cwndLimited) const;
 
+    /** Update pacing only when the window and RTT define a finite positive rate. */
+    virtual void updatePacingInterval();
+
   public:
     /** Constructor */
     OrbtcpFlavour();

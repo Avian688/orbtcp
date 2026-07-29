@@ -219,17 +219,12 @@ void OrbtcpFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
     state->lastUpdateSeq = state->snd_nxt;
     conn->emit(cwndSignal, state->snd_cwnd);
 
-    if(state->snd_cwnd > 0){
-        uint32_t maxWindow = std::max(state->snd_cwnd, dynamic_cast<TcpPacedConnection*>(conn)->getBytesInFlight());
-        uint32_t nominalBandwidth = (maxWindow / state->srtt.dbl());
-        double pace = 1/((1.2 *(double)nominalBandwidth)/(double)state->snd_mss);
-        dynamic_cast<OrbtcpConnection*>(conn)->changeIntersendingTime(pace);
-    }
+    updatePacingInterval();
     // Check if recovery phase has ended
     sendData(false);
 
-    if(!reactTimer->isScheduled()){
-        conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
+    if(!reactTimer->isScheduled() && state->srtt > SIMTIME_ZERO){
+        conn->scheduleAt(simTime() + state->srtt, reactTimer);
     }
 
     conn->emit(sndUnaSignal, state->snd_una);
@@ -293,14 +288,9 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
 
     if (state->lossRecovery) {
         conn->emit(cwndSignal, state->snd_cwnd);
-        if (state->snd_cwnd > 0) {
-            uint32_t maxWindow = std::max(state->snd_cwnd, pacedConn->getBytesInFlight());
-            uint32_t nominalBandwidth = maxWindow / state->srtt.dbl();
-            double pace = 1 / ((1.2 * (double)nominalBandwidth) / state->snd_mss);
-            dynamic_cast<OrbtcpConnection *>(conn)->changeIntersendingTime(pace);
-        }
-        if (!reactTimer->isScheduled())
-            conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
+        updatePacingInterval();
+        if (!reactTimer->isScheduled() && state->srtt > SIMTIME_ZERO)
+            conn->scheduleAt(simTime() + state->srtt, reactTimer);
         // Continue into OrbCC feedback handling as in the original flavour.
     }
 
@@ -311,17 +301,12 @@ void OrbtcpFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intD
     }
     conn->emit(cwndSignal, state->snd_cwnd);
     //state->lastUpdateSeq = state->snd_nxt;
-    if(state->snd_cwnd > 0){
-        uint32_t maxWindow = std::max(state->snd_cwnd, dynamic_cast<TcpPacedConnection*>(conn)->getBytesInFlight());
-        uint32_t nominalBandwidth = (maxWindow / state->srtt.dbl());
-        double pace = 1/((1.2 *(double)nominalBandwidth)/(double)state->snd_mss);
-        dynamic_cast<OrbtcpConnection*>(conn)->changeIntersendingTime(pace);
-    }
+    updatePacingInterval();
 
     sendData(false);
 
-    if(!reactTimer->isScheduled()){
-        conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
+    if(!reactTimer->isScheduled() && state->srtt > SIMTIME_ZERO){
+        conn->scheduleAt(simTime() + state->srtt, reactTimer);
     }
 }
 
@@ -550,6 +535,30 @@ uint32_t OrbtcpFlavour::limitCwndGrowth(uint32_t targetWnd, bool cwndLimited) co
     return std::min(targetWnd, state->snd_cwnd);
 }
 
+void OrbtcpFlavour::updatePacingInterval()
+{
+    auto *pacedConnection = dynamic_cast<TcpPacedConnection *>(conn);
+    if (state == nullptr || pacedConnection == nullptr || state->snd_cwnd == 0 ||
+            state->snd_mss == 0 || state->srtt <= SIMTIME_ZERO)
+        return;
+
+    const double maxWindow = std::max<double>(
+            state->snd_cwnd, pacedConnection->getBytesInFlight());
+    const double nominalBandwidth = maxWindow / state->srtt.dbl();
+    if (!std::isfinite(nominalBandwidth) || nominalBandwidth <= 0)
+        return;
+
+    const double paceSeconds = state->snd_mss / (1.2 * nominalBandwidth);
+    if (!std::isfinite(paceSeconds) || paceSeconds <= 0 ||
+            paceSeconds > SimTime::getMaxTime().dbl())
+        return;
+
+    simtime_t paceInterval = SimTime(paceSeconds);
+    if (paceInterval <= SIMTIME_ZERO)
+        paceInterval = SimTime::fromRaw(1);
+    pacedConnection->changeIntersendingTime(paceInterval);
+}
+
 size_t OrbtcpFlavour::getConnId()
 {
     return connId;
@@ -598,7 +607,8 @@ void OrbtcpFlavour::processTimer(cMessage *timer, TcpEventCode& event)
     if(timer == reactTimer){
         updateWindow = true;
         pathChanged = false;
-        conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
+        if (state->srtt > SIMTIME_ZERO)
+            conn->scheduleAt(simTime() + state->srtt, reactTimer);
     }
     else if(timer == initReactTimer){
         if(firstRTT == true){
