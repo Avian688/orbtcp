@@ -48,6 +48,7 @@ simple PintQueue extends PacketQueue
         double fallbackBandwidth @unit(bps) = default(100Mbps);
         double fixedAvgRTTVal @unit(s) = default(0s);
         double pintInitialRtt @unit(s) = default(10ms);
+        double alpha = default(0.03);
 
         int flowCardinalityBits = default(4096);
         int flowSketchSeed = default(1337);

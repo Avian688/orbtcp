@@ -54,6 +54,7 @@ void PintQueue::initialize(int stage)
     fallbackBandwidthBitsPerSecond = par("fallbackBandwidth").doubleValue();
     fixedAvgRtt = par("fixedAvgRTTVal");
     pintInitialRtt = par("pintInitialRtt");
+    alpha = par("alpha");
     flowCardinalityBits = par("flowCardinalityBits");
     flowSketchSeed = static_cast<uint64_t>(par("flowSketchSeed").intValue());
     pintBits = par("pintBits");
@@ -62,6 +63,8 @@ void PintQueue::initialize(int stage)
 
     if (pintInitialRtt <= SIMTIME_ZERO)
         throw cRuntimeError("pintInitialRtt must be positive");
+    if (alpha <= 0 || alpha > 1)
+        throw cRuntimeError("PINT alpha must be in the range (0, 1]");
     if (fallbackBandwidthBitsPerSecond <= 0)
         throw cRuntimeError("fallbackBandwidth must be positive");
     if (flowCardinalityBits <= 0)
@@ -182,20 +185,25 @@ double PintQueue::updatePintUtilization(uint64_t packetBytes, uint64_t queueByte
     const double rttSeconds = avgRtt > SIMTIME_ZERO ?
             avgRtt.dbl() : pintInitialRtt.dbl();
     const double serializationTime = packetBytes / bandwidthBytesPerSecond;
-    double tau = hasPintSample ?
-            (simTime() - lastPintUpdate).dbl() : serializationTime;
+    const double queueUtilization =
+            queueBytes / (bandwidthBytesPerSecond * rttSeconds);
 
-    if (tau <= 0)
-        tau = serializationTime;
-    tau = std::clamp(tau, std::min(serializationTime, rttSeconds), rttSeconds);
+    if (!hasPintSample) {
+        lastPintUpdate = simTime();
+        hasPintSample = true;
+        pintUtilization = queueUtilization;
+        return pintUtilization;
+    }
 
-    const double weight = tau / rttSeconds;
-    const double sample = queueBytes / (bandwidthBytesPerSecond * rttSeconds) +
+    double tau = (simTime() - lastPintUpdate).dbl();
+    tau = std::max(tau, serializationTime);
+
+    const double sample = queueUtilization +
             packetBytes / (bandwidthBytesPerSecond * tau);
-    pintUtilization = (1 - weight) * pintUtilization + weight * sample;
+    // Use OrbCC's fixed alpha rather than HPCC's time-derived tau / RTT weight.
+    pintUtilization = (1 - alpha) * pintUtilization + alpha * sample;
 
     lastPintUpdate = simTime();
-    hasPintSample = true;
     return pintUtilization;
 }
 

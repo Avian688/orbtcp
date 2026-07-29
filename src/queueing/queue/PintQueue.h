@@ -46,6 +46,7 @@ class PintQueue : public PacketQueue
     double sumRttByCwnd = 0;
     double sumRttSquareByCwnd = 0;
     double pintUtilization = 0;
+    double alpha = 0.03;
     double pintLogBase = 1.05;
 
     uint64_t txBytes = 0;
