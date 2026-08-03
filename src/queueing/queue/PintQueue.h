@@ -17,8 +17,8 @@ namespace inet {
 namespace queueing {
 
 /**
- * OrbCC queue using HPCC-PINT-style local utilization and a single,
- * logarithmically encoded bottleneck record.
+ * OrbCC queue using HPCC-PINT-style local utilization, a single
+ * logarithmically encoded bottleneck record, and cumulative queue residence.
  */
 class PintQueue : public PacketQueue
 {
@@ -75,6 +75,7 @@ class PintQueue : public PacketQueue
     virtual void markFlow(std::vector<uint64_t>& bitmap, uint64_t flowId);
     virtual double estimateFlowCount(const std::vector<uint64_t>& bitmap) const;
     virtual void resetFlowCounters();
+    virtual int getFeedbackFlowCount(bool initialPhase) const;
 
     virtual double updatePintUtilization(uint64_t packetBytes, uint64_t queueBytes,
             double bandwidthBytesPerSecond);

@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "../../../common/PintQueueingDelay.h"
+
 namespace inet {
 namespace tcp {
 
@@ -29,13 +31,29 @@ void OrbtcpPintFlavour::initialize()
     lastPintFeedback = SIMTIME_ZERO;
 }
 
+void OrbtcpPintFlavour::updateRttTelemetry(const IntDataVec& intData)
+{
+    state->queueingDelay = 0;
+    if (intData.empty()) {
+        conn->emit(queueingDelaySignal, state->queueingDelay);
+        return;
+    }
+
+    state->queueingDelay =
+            pint::decodeQueueingDelay(intData.front().getQueueingDelayCode());
+    conn->emit(queueingDelaySignal, state->queueingDelay);
+}
+
 double OrbtcpPintFlavour::measureInflight(IntDataVec intData)
 {
     if (intData.empty())
         return 0;
 
     const IntMetaData& pintData = intData.front();
-    if (!pintData.getPintValid())
+    const double utilization = pintData.getPintUtilization();
+    const double bottleneckBandwidth = pintData.getB();
+    if (!std::isfinite(utilization) || utilization <= 0 ||
+            !std::isfinite(bottleneckBandwidth) || bottleneckBandwidth <= 0)
         return 0;
 
     if (pintFeedbackProbability < 1 &&
@@ -58,12 +76,6 @@ double OrbtcpPintFlavour::measureInflight(IntDataVec intData)
         return state->u;
     }
 
-    const double utilization = pintData.getPintUtilization();
-    const double bottleneckBandwidth = pintData.getB();
-    if (!std::isfinite(utilization) || utilization <= 0 ||
-            !std::isfinite(bottleneckBandwidth) || bottleneckBandwidth <= 0)
-        return 0;
-
     const simtime_t feedbackInterval = lastPintFeedback > SIMTIME_ZERO ?
             simTime() - lastPintFeedback :
             (state->srtt > SIMTIME_ZERO ? state->srtt : state->T);
@@ -78,11 +90,10 @@ double OrbtcpPintFlavour::measureInflight(IntDataVec intData)
 
     state->sharingFlows =
             std::max(1, pintData.getNumOfFlows());
-    state->initialPhaseSharingFlows =
-            std::max(0, pintData.getNumOfFlowsInInitialPhase());
+    state->initialPhaseSharingFlows = 0;
     state->bottBW = static_cast<uint32_t>(bottleneckBandwidth);
     state->queueingDelay =
-            std::max(0.0, pintData.getAccumulatedQueueingDelay());
+            pint::decodeQueueingDelay(pintData.getQueueingDelayCode());
     state->txRate = utilization * bottleneckBandwidth;
     state->u = utilization;
     state->alpha = 1;
@@ -90,7 +101,6 @@ double OrbtcpPintFlavour::measureInflight(IntDataVec intData)
     bottleneckId = pintData.getHopId();
     pathHopMetrics.clear();
 
-    conn->emit(queueingDelaySignal, state->queueingDelay);
     conn->emit(uSignal, utilization);
     conn->emit(USignal, state->u);
     conn->emit(tauSignal, feedbackInterval);
@@ -106,8 +116,7 @@ double OrbtcpPintFlavour::measureInflight(IntDataVec intData)
         }
         else {
             state->ssthresh =
-                    (bottleneckBandwidth /
-                    (state->sharingFlows + state->initialPhaseSharingFlows)) *
+                    (bottleneckBandwidth / state->sharingFlows) *
                     smoothedEstimatedRtt.dbl() * state->eta;
             state->additiveIncrease = state->ssthresh > state->snd_cwnd ?
                     state->ssthresh - state->snd_cwnd : 0;

@@ -20,6 +20,7 @@
 #include <inet/transportlayer/tcp/TcpReceiveQueue.h>
 #include <inet/transportlayer/tcp/TcpSackRexmitQueue.h>
 
+#include "../../common/PintSenderTelemetry.h"
 #include "../orbtcp/flavours/OrbtcpFlavour.h"
 namespace inet {
 namespace tcp {
@@ -845,6 +846,12 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
         // elapsed time since the first segment in the retransmission
         // queue was sent.  Any segments on the retransmission queue
         // which are thereby entirely acknowledged."
+        if (tcpHeader->findTag<IntTag>())
+            dynamic_cast<OrbtcpFamily *>(tcpAlgorithm)->updateRttTelemetry(
+                    tcpHeader->getTag<IntTag>()->getIntData());
+        else
+            dynamic_cast<OrbtcpFamily *>(tcpAlgorithm)->updateRttTelemetry({});
+
         if (state->ts_enabled)
             tcpAlgorithm->rttMeasurementCompleteUsingTS(getTSecr(tcpHeader));
         // Note: If TS is disabled the RTT measurement is completed in TcpBaseAlg::receivedDataAck()
@@ -1096,11 +1103,17 @@ uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
 
     ASSERT(tcpHeader->getHeaderLength() == tmpTcpHeader->getHeaderLength());
 
-    tcpHeader->addTagIfAbsent<IntTag>()->setConnId((unsigned long)dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getConnId());
-    tcpHeader->addTagIfAbsent<IntTag>()->setRtt(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getEstimatedRtt());
-    tcpHeader->addTagIfAbsent<IntTag>()->setCwnd(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getCwnd());
-    tcpHeader->addTagIfAbsent<IntTag>()->setInitialPhase(dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->getInitialPhase());
-    tcpHeader->addTagIfAbsent<IntTag>()->setRetrans(rexmitQueue->isRetransmitted(state->snd_nxt));
+    auto *orbAlgorithm = dynamic_cast<OrbtcpFamily *>(tcpAlgorithm);
+    auto intTag = tcpHeader->addTagIfAbsent<IntTag>();
+    const simtime_t estimatedRtt = orbAlgorithm->getEstimatedRtt();
+    const uint32_t cwnd = orbAlgorithm->getCwnd();
+    intTag->setConnId(static_cast<unsigned long>(orbAlgorithm->getConnId()));
+    intTag->setRtt(estimatedRtt);
+    intTag->setCwnd(cwnd);
+    intTag->setPintBaseRttCode(pint::encodeBaseRtt(estimatedRtt.dbl()));
+    intTag->setPintCwndCode(pint::encodeCwnd(cwnd));
+    intTag->setInitialPhase(orbAlgorithm->getInitialPhase());
+    intTag->setRetrans(rexmitQueue->isRetransmitted(state->snd_nxt));
 
     calculateAppLimited();
 

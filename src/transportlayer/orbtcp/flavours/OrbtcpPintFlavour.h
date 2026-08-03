@@ -28,6 +28,8 @@ class OrbtcpPintFlavour : public OrbtcpFlavour
 
     virtual void initialize() override;
 
+    virtual void updateRttTelemetry(const IntDataVec& intData) override;
+
   public:
     OrbtcpPintFlavour() = default;
     virtual ~OrbtcpPintFlavour() = default;

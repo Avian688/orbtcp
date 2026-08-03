@@ -40,6 +40,8 @@ class OrbtcpFamily : public TcpPacedFamily
 
     virtual void receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData);
 
+    virtual void updateRttTelemetry(const IntDataVec& intData);
+
     virtual simtime_t getRtt();
 
     virtual simtime_t getEstimatedRtt();

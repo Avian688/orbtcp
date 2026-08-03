@@ -27,11 +27,10 @@ class IntMetaData extends cObject
 	double effectiveNumOfFlows;
 	long rxQlen; // RX Queue Length
 	int numOfFlowsInInitialPhase;
-	bool pintValid = false;
 	int pintPower; // Conceptual encoded PINT field
 	double pintUtilization; // Decoded simulation value, not additional modeled wire overhead
-	unsigned int pathDigest;
-	double accumulatedQueueingDelay;
+	unsigned int pathDigest; // 32-bit order-sensitive OrbCC path fingerprint
+	unsigned int queueingDelayCode; // 12-bit cumulative fixed-point queue residence time
 }
 
 class IntTag extends TagBase
@@ -40,6 +39,8 @@ class IntTag extends TagBase
     IntDataVec intData;
     simtime_t rtt;
     unsigned int cwnd;
+	unsigned int pintBaseRttCode; // 24-bit value in microseconds
+	unsigned int pintCwndCode; // 16-bit floating-point congestion window in bytes
 	bool initialPhase = true;
 	bool retrans = false;
 }

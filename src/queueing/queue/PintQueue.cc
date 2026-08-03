@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 
 #include "inet/common/PacketEventTag.h"
 #include "inet/common/TimeTag.h"
@@ -18,6 +17,8 @@
 #include "inet/transportlayer/tcp_common/TcpHeader_m.h"
 
 #include "../../common/IntTag_m.h"
+#include "../../common/PintQueueingDelay.h"
+#include "../../common/PintSenderTelemetry.h"
 
 namespace inet {
 namespace queueing {
@@ -179,6 +180,13 @@ void PintQueue::resetFlowCounters()
     std::fill(initialPhaseFlowBitmap.begin(), initialPhaseFlowBitmap.end(), 0);
 }
 
+int PintQueue::getFeedbackFlowCount(bool initialPhase) const
+{
+    const int feedbackCount = initialPhase ?
+            numberOfInitialPhaseFlows : numberOfFlows;
+    return std::clamp(feedbackCount, 1, 65535);
+}
+
 double PintQueue::updatePintUtilization(uint64_t packetBytes, uint64_t queueBytes,
         double bandwidthBytesPerSecond)
 {
@@ -271,12 +279,15 @@ void PintQueue::pushPacket(Packet *packet, cGate *gate)
             auto intTag = tcpHeader->addTagIfAbsent<IntTag>();
             const uint64_t flowId = static_cast<uint64_t>(intTag->getConnId());
 
-            if (intTag->getRtt() > SIMTIME_ZERO && intTag->getCwnd() > 0) {
-                const double weight = static_cast<double>(packetBytesAtQueue) /
-                        intTag->getCwnd();
-                sumRttByCwnd += intTag->getRtt().dbl() * weight;
-                sumRttSquareByCwnd += intTag->getRtt().dbl() *
-                        intTag->getRtt().dbl() * weight;
+            const double baseRtt =
+                    pint::decodeBaseRtt(intTag->getPintBaseRttCode());
+            const uint64_t cwndBytes =
+                    pint::decodeCwnd(intTag->getPintCwndCode());
+            if (baseRtt > 0 && cwndBytes > 0) {
+                const double weight =
+                        static_cast<double>(packetBytesAtQueue) / cwndBytes;
+                sumRttByCwnd += baseRtt * weight;
+                sumRttSquareByCwnd += baseRtt * baseRtt * weight;
             }
 
             markFlow(activeFlowBitmap, flowId);
@@ -351,51 +362,53 @@ Packet *PintQueue::pullPacket(cGate *gate)
 
     if (ipv4Header->getProtocolId() == 6) {
         auto tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
-        if (packet->getByteLength() > 0 && tcpHeader->findTag<IntTag>()) {
-            auto& intDataVector =
-                    tcpHeader->addTagIfAbsent<IntTag>()->getIntDataForUpdate();
+        if (tcpHeader->findTag<IntTag>()) {
+            auto intTag = tcpHeader->addTagIfAbsent<IntTag>();
+            auto& intDataVector = intTag->getIntDataForUpdate();
             if (!intDataVector.empty()) {
                 IntMetaData& intData = intDataVector.front();
-                const int hopId = getParentModule()->getParentModule()->getId();
+                intData.setQueueingDelayCode(pint::accumulateQueueingDelay(
+                        intData.getQueueingDelayCode(), queueingTime.dbl()));
 
-                const uint16_t power = encodePintUtilization(localUtilization);
-                const double decodedUtilization = decodePintUtilization(power);
-                const double localFairShare =
-                        bandwidthBytesPerSecond / std::max(1, numberOfFlows);
-                const double currentFairShare = intData.getPintValid() ?
-                        intData.getB() /
-                        std::max(1, intData.getNumOfFlows()) :
-                        std::numeric_limits<double>::infinity();
+                // ACKs add their reverse-path queue residence without replacing
+                // the forward-path bottleneck record echoed by the receiver.
+                if (packet->getByteLength() > 0) {
+                    const int hopId = getParentModule()->getParentModule()->getId();
+                    const uint16_t power = encodePintUtilization(localUtilization);
+                    const double decodedUtilization = decodePintUtilization(power);
+                    const int feedbackFlowCount =
+                            getFeedbackFlowCount(intTag->getInitialPhase());
+                    const double localFairShare =
+                            bandwidthBytesPerSecond / feedbackFlowCount;
+                    const bool hasBottleneckRecord = intData.getB() > 0;
+                    const double currentFairShare = hasBottleneckRecord ?
+                            intData.getB() /
+                            std::max(1, intData.getNumOfFlows()) :
+                            0;
 
-                intData.setPathDigest(updatePathDigest(
-                        intData.getPathDigest(), static_cast<uint32_t>(hopId)));
-                intData.setAccumulatedQueueingDelay(
-                        intData.getAccumulatedQueueingDelay() +
-                        queueBytes / bandwidthBytesPerSecond);
+                    intData.setPathDigest(updatePathDigest(
+                            intData.getPathDigest(), static_cast<uint32_t>(hopId)));
 
-                // Equal quantized utilizations retain the tighter OrbCC fair share.
-                if (!intData.getPintValid() ||
-                        power > intData.getPintPower() ||
-                        (power == intData.getPintPower() &&
-                        localFairShare < currentFairShare)) {
-                    intData.setPintValid(true);
-                    intData.setPintPower(power);
-                    intData.setPintUtilization(decodedUtilization);
-                    intData.setHopId(hopId);
-                    intData.setTs(simTime());
-                    intData.setB(bandwidthBytesPerSecond);
-                    intData.setQLen(queueBytes);
-                    intData.setRxQlen(queueBytes);
-                    intData.setTxBytes(0);
-                    intData.setAverageRtt(0);
-                    intData.setNumOfFlows(numberOfFlows);
-                    intData.setEffectiveNumOfFlows(numberOfFlows);
-                    intData.setNumOfFlowsInInitialPhase(
-                            numberOfInitialPhaseFlows);
+                    // Equal quantized utilizations retain the tighter OrbCC fair share.
+                    if (!hasBottleneckRecord ||
+                            power > intData.getPintPower() ||
+                            (power == intData.getPintPower() &&
+                            localFairShare < currentFairShare)) {
+                        intData.setPintPower(power);
+                        intData.setPintUtilization(decodedUtilization);
+                        intData.setHopId(hopId);
+                        intData.setTs(simTime());
+                        intData.setB(bandwidthBytesPerSecond);
+                        intData.setQLen(queueBytes);
+                        intData.setRxQlen(0);
+                        intData.setTxBytes(0);
+                        intData.setAverageRtt(0);
+                        intData.setNumOfFlows(feedbackFlowCount);
+                    }
+
+                    cSimpleModule::emit(pintDecodedUtilizationSignal, decodedUtilization);
+                    cSimpleModule::emit(pintEncodedPowerSignal, static_cast<long>(power));
                 }
-
-                cSimpleModule::emit(pintDecodedUtilizationSignal, decodedUtilization);
-                cSimpleModule::emit(pintEncodedPowerSignal, static_cast<long>(power));
             }
         }
         packet->insertAtFront(tcpHeader);

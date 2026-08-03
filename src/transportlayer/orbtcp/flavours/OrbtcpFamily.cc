@@ -87,6 +87,10 @@ void OrbtcpFamily::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intDa
 
 }
 
+void OrbtcpFamily::updateRttTelemetry(const IntDataVec&)
+{
+}
+
 simtime_t OrbtcpFamily::getRtt()
 {
     return state->srtt;
