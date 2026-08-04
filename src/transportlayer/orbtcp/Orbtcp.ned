@@ -28,5 +28,9 @@ simple Orbtcp extends TcpPaced
         double additiveIncreasePercent = default(0.05);
         double eta = default(0.95);
         double alpha = default (0.03);
+        // Probability that the sender consumes an otherwise valid PINT ACK.
         double pintFeedbackProbability = default(1);
+        // These must match the PintQueue format; zero means an exact 16-bit count.
+        int pintFlowCountBits = default(8);
+        int pintMaxFlowCount = default(65535);
 }

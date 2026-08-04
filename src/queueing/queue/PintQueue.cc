@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include "inet/common/PacketEventTag.h"
 #include "inet/common/TimeTag.h"
@@ -57,10 +58,15 @@ void PintQueue::initialize(int stage)
     fixedAvgRtt = par("fixedAvgRTTVal");
     pintInitialRtt = par("pintInitialRtt");
     alpha = par("alpha");
+    flowCountSketchEnabled = par("flowCountSketchEnabled");
     flowCardinalityBits = par("flowCardinalityBits");
     flowSketchSeed = static_cast<uint64_t>(par("flowSketchSeed").intValue());
     pintBits = par("pintBits");
+    pintFlowCountBits = par("pintFlowCountBits");
+    pintMaxFlowCount = par("pintMaxFlowCount");
+    pintAutoScaleEncoding = par("pintAutoScaleEncoding");
     pintLogBase = par("pintLogBase");
+    pintMaxUtilization = par("pintMaxUtilization");
     pintMaxConcurrentFlows = par("pintMaxConcurrentFlows");
 
     if (pintInitialRtt <= SIMTIME_ZERO)
@@ -69,20 +75,32 @@ void PintQueue::initialize(int stage)
         throw cRuntimeError("PINT alpha must be in the range (0, 1]");
     if (fallbackBandwidthBitsPerSecond <= 0)
         throw cRuntimeError("fallbackBandwidth must be positive");
-    if (flowCardinalityBits <= 0)
+    if (flowCountSketchEnabled && flowCardinalityBits <= 0)
         throw cRuntimeError("PINT flow counter size must be positive");
-    if (pintBits <= 0 || pintBits > 16)
-        throw cRuntimeError("pintBits must be in the range [1, 16]");
-    if (pintLogBase <= 1 || pintMaxConcurrentFlows <= 0)
-        throw cRuntimeError("PINT logarithmic encoding parameters are invalid");
+    if (pintBits < 0 || pintBits > 16)
+        throw cRuntimeError("pintBits must be 0 (exact) or in the range [1, 16]");
+    if (!pint::isValidFlowCountBits(pintFlowCountBits))
+        throw cRuntimeError("pintFlowCountBits must be 0 (exact) or in the range [2, 16]");
+    if (pintMaxFlowCount <= 0 ||
+            pintMaxFlowCount > static_cast<int>(pint::FLOW_COUNT_MAX))
+        throw cRuntimeError("pintMaxFlowCount must be in the range [1, 65535]");
+    if (pintMaxConcurrentFlows <= 0)
+        throw cRuntimeError("pintMaxConcurrentFlows must be positive");
+    if (pintBits > 0 && !pintAutoScaleEncoding && pintLogBase <= 1)
+        throw cRuntimeError("legacy pintLogBase must be greater than 1");
+    if (pintBits > 0 && pintAutoScaleEncoding &&
+            pintMaxUtilization <= 1.0 / pintMaxConcurrentFlows)
+        throw cRuntimeError("pintMaxUtilization must exceed 1 / pintMaxConcurrentFlows");
 
     avgRtt = fixedAvgRtt > SIMTIME_ZERO ? fixedAvgRtt : pintInitialRtt;
     measurementInterval = avgRtt;
     lastPintUpdate = SIMTIME_ZERO;
 
-    const int bitmapWords = (flowCardinalityBits + 63) / 64;
-    activeFlowBitmap.assign(bitmapWords, 0);
-    initialPhaseFlowBitmap.assign(bitmapWords, 0);
+    if (flowCountSketchEnabled) {
+        const int bitmapWords = (flowCardinalityBits + 63) / 64;
+        activeFlowBitmap.assign(bitmapWords, 0);
+        initialPhaseFlowBitmap.assign(bitmapWords, 0);
+    }
 
     measurementTimer = new cMessage("PINT measurement timer");
 
@@ -113,9 +131,18 @@ void PintQueue::processMeasurementTimer()
     if (avgRtt <= SIMTIME_ZERO)
         avgRtt = pintInitialRtt;
 
-    numberOfFlows = std::max(1, static_cast<int>(std::lround(estimateFlowCount(activeFlowBitmap))));
-    numberOfInitialPhaseFlows =
-            std::max(0, static_cast<int>(std::lround(estimateFlowCount(initialPhaseFlowBitmap))));
+    if (flowCountSketchEnabled) {
+        numberOfFlows = std::max(1,
+                static_cast<int>(std::lround(estimateFlowCount(activeFlowBitmap))));
+        numberOfInitialPhaseFlows = std::max(0,
+                static_cast<int>(std::lround(
+                        estimateFlowCount(initialPhaseFlowBitmap))));
+    }
+    else {
+        numberOfFlows = std::max(1, static_cast<int>(activeFlowIds.size()));
+        numberOfInitialPhaseFlows =
+                static_cast<int>(initialPhaseFlowIds.size());
+    }
 
     const double queueingDelay = bandwidthBytesPerSecond > 0 ?
             static_cast<double>(queue.getByteLength()) / bandwidthBytesPerSecond : 0;
@@ -179,6 +206,8 @@ void PintQueue::resetFlowCounters()
 {
     std::fill(activeFlowBitmap.begin(), activeFlowBitmap.end(), 0);
     std::fill(initialPhaseFlowBitmap.begin(), initialPhaseFlowBitmap.end(), 0);
+    activeFlowIds.clear();
+    initialPhaseFlowIds.clear();
 }
 
 int PintQueue::getTotalFlowCount() const
@@ -221,11 +250,20 @@ double PintQueue::updatePintUtilization(uint64_t packetBytes, uint64_t queueByte
 
 uint16_t PintQueue::encodePintUtilization(double utilization)
 {
+    if (pintBits == 0)
+        return 0;
+
     const uint32_t maxPower = pintBits == 16 ?
             std::numeric_limits<uint16_t>::max() : (1U << pintBits) - 1;
-    const double scaledUtilization =
-            std::max(1.0, std::ceil(utilization * pintMaxConcurrentFlows));
-    const double exactPower = std::log(scaledUtilization) / std::log(pintLogBase);
+    const double minimumUtilization = 1.0 / pintMaxConcurrentFlows;
+    const double clampedUtilization = pintAutoScaleEncoding ?
+            std::max(minimumUtilization, utilization) :
+            std::max(1.0, std::ceil(
+                    utilization * pintMaxConcurrentFlows)) /
+                    pintMaxConcurrentFlows;
+    const double logBase = getPintUtilizationLogBase();
+    const double exactPower = std::log(
+            clampedUtilization / minimumUtilization) / std::log(logBase);
 
     if (exactPower >= maxPower)
         return static_cast<uint16_t>(maxPower);
@@ -235,16 +273,36 @@ uint16_t PintQueue::encodePintUtilization(double utilization)
     if (lowerPower == upperPower)
         return lowerPower;
 
-    const double lowerValue = std::pow(pintLogBase, lowerPower);
-    const double upperValue = std::pow(pintLogBase, upperPower);
+    const double lowerValue = minimumUtilization *
+            std::pow(logBase, lowerPower);
+    const double upperValue = minimumUtilization *
+            std::pow(logBase, upperPower);
     const double upperProbability =
-            (scaledUtilization - lowerValue) / (upperValue - lowerValue);
+            (clampedUtilization - lowerValue) / (upperValue - lowerValue);
     return getRNG(0)->doubleRand() < upperProbability ? upperPower : lowerPower;
 }
 
 double PintQueue::decodePintUtilization(uint16_t power) const
 {
-    return std::pow(pintLogBase, power) / pintMaxConcurrentFlows;
+    if (pintBits == 0)
+        return 0;
+
+    return std::pow(getPintUtilizationLogBase(), power) /
+            pintMaxConcurrentFlows;
+}
+
+double PintQueue::getPintUtilizationLogBase() const
+{
+    if (!pintAutoScaleEncoding)
+        return pintLogBase;
+
+    const uint32_t maxPower = pintBits == 16 ?
+            std::numeric_limits<uint16_t>::max() : (1U << pintBits) - 1;
+    const double minimumUtilization = 1.0 / pintMaxConcurrentFlows;
+    const double rangeFittingBase = std::pow(
+            pintMaxUtilization / minimumUtilization, 1.0 / maxPower);
+
+    return rangeFittingBase;
 }
 
 uint64_t PintQueue::mixHash(uint64_t value)
@@ -294,9 +352,16 @@ void PintQueue::pushPacket(Packet *packet, cGate *gate)
                 sumRttSquareByCwnd += baseRtt * baseRtt * weight;
             }
 
-            markFlow(activeFlowBitmap, flowId);
-            if (intTag->getInitialPhase())
-                markFlow(initialPhaseFlowBitmap, flowId);
+            if (flowCountSketchEnabled) {
+                markFlow(activeFlowBitmap, flowId);
+                if (intTag->getInitialPhase())
+                    markFlow(initialPhaseFlowBitmap, flowId);
+            }
+            else {
+                activeFlowIds.insert(flowId);
+                if (intTag->getInitialPhase())
+                    initialPhaseFlowIds.insert(flowId);
+            }
 
             auto& intData = intTag->getIntDataForUpdate();
             if (intData.empty())
@@ -379,33 +444,40 @@ Packet *PintQueue::pullPacket(cGate *gate)
                 if (packet->getByteLength() > 0) {
                     const int hopId = getParentModule()->getParentModule()->getId();
                     const uint16_t power = encodePintUtilization(localUtilization);
-                    const double decodedUtilization = decodePintUtilization(power);
+                    const double decodedUtilization = pintBits == 0 ?
+                            localUtilization : decodePintUtilization(power);
                     const int totalFlowCount = getTotalFlowCount();
                     const bool initialPhase = intTag->getInitialPhase();
                     const int initialPhaseFlowCount = initialPhase ?
                             std::max(1, getInitialPhaseFlowCount()) : 0;
                     const uint32_t totalFlowCountCode =
-                            pint::encodeFlowCount(totalFlowCount);
+                            pint::encodeFlowCount(totalFlowCount,
+                                    pintFlowCountBits, pintMaxFlowCount);
                     const uint32_t initialFlowCountCode = initialPhase ?
-                            pint::encodeFlowCount(initialPhaseFlowCount) : 0;
+                            pint::encodeFlowCount(initialPhaseFlowCount,
+                                    pintFlowCountBits,
+                                    pintMaxFlowCount) : 0;
                     const uint32_t decodedTotalFlowCount =
-                            pint::decodeFlowCount(totalFlowCountCode);
+                            pint::decodeFlowCount(totalFlowCountCode,
+                                    pintFlowCountBits, pintMaxFlowCount);
                     const double localFairShare =
                             bandwidthBytesPerSecond / decodedTotalFlowCount;
                     const bool hasBottleneckRecord = intData.getB() > 0;
                     const double currentFairShare = hasBottleneckRecord ?
                             intData.getB() /
                             std::max(1U, pint::decodeFlowCount(
-                                    intData.getPintTotalFlowCountCode())) :
+                                    intData.getPintTotalFlowCountCode(),
+                                    pintFlowCountBits,
+                                    pintMaxFlowCount)) :
                             0;
 
                     intData.setPathDigest(updatePathDigest(
                             intData.getPathDigest(), static_cast<uint32_t>(hopId)));
 
-                    // Equal quantized utilizations retain the tighter OrbCC fair share.
+                    // Equal utilization records retain the tighter OrbCC fair share.
                     if (!hasBottleneckRecord ||
-                            power > intData.getPintPower() ||
-                            (power == intData.getPintPower() &&
+                            decodedUtilization > intData.getPintUtilization() ||
+                            (decodedUtilization == intData.getPintUtilization() &&
                             localFairShare < currentFairShare)) {
                         intData.setPintPower(power);
                         intData.setPintUtilization(decodedUtilization);
@@ -419,6 +491,8 @@ Packet *PintQueue::pullPacket(cGate *gate)
                         intData.setPintTotalFlowCountCode(totalFlowCountCode);
                         if (initialPhase)
                             intData.setPintInitialFlowCountCode(initialFlowCountCode);
+                        else
+                            intData.setPintInitialFlowCountCode(0);
                     }
 
                     cSimpleModule::emit(pintDecodedUtilizationSignal, decodedUtilization);

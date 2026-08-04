@@ -9,6 +9,7 @@
 #define QUEUEING_QUEUE_PINTQUEUE_H_
 
 #include <cstdint>
+#include <set>
 #include <vector>
 
 #include "inet/queueing/queue/PacketQueue.h"
@@ -17,8 +18,8 @@ namespace inet {
 namespace queueing {
 
 /**
- * OrbCC queue using HPCC-PINT-style local utilization, a single
- * logarithmically encoded bottleneck record, and cumulative queue residence.
+ * OrbCC queue using HPCC-PINT-style local utilization, one configurable
+ * bottleneck record, and cumulative queue residence.
  */
 class PintQueue : public PacketQueue
 {
@@ -47,7 +48,8 @@ class PintQueue : public PacketQueue
     double sumRttSquareByCwnd = 0;
     double pintUtilization = 0;
     double alpha = 0.03;
-    double pintLogBase = 1.05;
+    double pintLogBase = 0;
+    double pintMaxUtilization = 4;
 
     uint64_t txBytes = 0;
     uint64_t flowSketchSeed = 0;
@@ -56,12 +58,18 @@ class PintQueue : public PacketQueue
     int numberOfInitialPhaseFlows = 0;
     int flowCardinalityBits = 0;
     int pintBits = 8;
+    int pintFlowCountBits = 8;
+    int pintMaxFlowCount = 65535;
     int pintMaxConcurrentFlows = 512;
 
     bool hasPintSample = false;
+    bool flowCountSketchEnabled = true;
+    bool pintAutoScaleEncoding = false;
 
     std::vector<uint64_t> activeFlowBitmap;
     std::vector<uint64_t> initialPhaseFlowBitmap;
+    std::set<uint64_t> activeFlowIds;
+    std::set<uint64_t> initialPhaseFlowIds;
 
   protected:
     virtual void initialize(int stage) override;
@@ -82,6 +90,7 @@ class PintQueue : public PacketQueue
             double bandwidthBytesPerSecond);
     virtual uint16_t encodePintUtilization(double utilization);
     virtual double decodePintUtilization(uint16_t power) const;
+    virtual double getPintUtilizationLogBase() const;
 
     static uint64_t mixHash(uint64_t value);
     static uint32_t updatePathDigest(uint32_t digest, uint32_t hopId);

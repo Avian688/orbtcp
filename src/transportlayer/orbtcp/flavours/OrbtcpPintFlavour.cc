@@ -38,8 +38,17 @@ void OrbtcpPintFlavour::initialize()
 
     pintFeedbackProbability =
             conn->getTcpMain()->par("pintFeedbackProbability").doubleValue();
+    pintFlowCountBits =
+            conn->getTcpMain()->par("pintFlowCountBits").intValue();
+    pintMaxFlowCount =
+            conn->getTcpMain()->par("pintMaxFlowCount").intValue();
     if (pintFeedbackProbability < 0 || pintFeedbackProbability > 1)
         throw cRuntimeError("pintFeedbackProbability must be in the range [0, 1]");
+    if (!pint::isValidFlowCountBits(pintFlowCountBits))
+        throw cRuntimeError("pintFlowCountBits must be 0 (exact) or in the range [2, 16]");
+    if (pintMaxFlowCount <= 0 ||
+            pintMaxFlowCount > static_cast<int>(pint::FLOW_COUNT_MAX))
+        throw cRuntimeError("pintMaxFlowCount must be in the range [1, 65535]");
 
     lastPathDigest = 0;
     hasPathDigest = false;
@@ -118,13 +127,15 @@ double OrbtcpPintFlavour::measureInflight(IntDataVec intData)
         conn->scheduleAt(simTime() + startupDelay, initReactTimer);
 
     const uint32_t totalFlowCount = pint::decodeFlowCount(
-            pintData.getPintTotalFlowCountCode());
+            pintData.getPintTotalFlowCountCode(), pintFlowCountBits,
+            pintMaxFlowCount);
     if (totalFlowCount == 0)
         return 0;
 
     state->sharingFlows = totalFlowCount;
     state->initialPhaseSharingFlows = pint::decodeFlowCount(
-            pintData.getPintInitialFlowCountCode());
+            pintData.getPintInitialFlowCountCode(), pintFlowCountBits,
+            pintMaxFlowCount);
     state->bottBW = static_cast<uint32_t>(bottleneckBandwidth);
     state->queueingDelay =
             pint::decodeQueueingDelay(pintData.getQueueingDelayCode());

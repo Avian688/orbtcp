@@ -27,12 +27,12 @@ class IntMetaData extends cObject
 	double effectiveNumOfFlows;
 	long rxQlen; // RX Queue Length
 	int numOfFlowsInInitialPhase; // Legacy full-INT startup-flow estimate
-	int pintPower; // Conceptual encoded PINT field
+	int pintPower; // Configurable-width utilization code; zero in exact mode
 	double pintUtilization; // Decoded simulation value, not additional modeled wire overhead
 	unsigned int pathDigest; // 32-bit order-sensitive OrbCC path fingerprint
 	unsigned int queueingDelayCode; // 12-bit cumulative fixed-point queue residence time
-	unsigned int pintTotalFlowCountCode; // 8-bit N, present in every PINT record
-	unsigned int pintInitialFlowCountCode; // Optional 8-bit S when initialPhase is true
+	unsigned int pintTotalFlowCountCode; // Configurable-width N, present in every PINT record
+	unsigned int pintInitialFlowCountCode; // Optional configurable-width S during startup
 }
 
 class IntTag extends TagBase

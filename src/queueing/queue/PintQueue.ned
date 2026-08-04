@@ -50,12 +50,24 @@ simple PintQueue extends PacketQueue
         double pintInitialRtt @unit(s) = default(10ms);
         double alpha = default(0.03);
 
+        // Set false for an exact per-interval flow set, matching base OrbCC.
+        bool flowCountSketchEnabled = default(true);
         int flowCardinalityBits = default(4096);
         int flowSketchSeed = default(1337);
 
+        // U encoding: zero carries the exact simulation value.
         int pintBits = default(8);
-        double pintLogBase = default(1.05);
+        // N/S encoding: zero carries the exact 16-bit count.
+        int pintFlowCountBits = default(8);
+        // Upper count represented by logarithmic modes; it must cover the workload.
+        int pintMaxFlowCount = default(65535);
+
+        // Set true for bit-width sweeps; false preserves the legacy 1.05 base.
+        bool pintAutoScaleEncoding = default(false);
+        double pintMaxUtilization = default(4);
         int pintMaxConcurrentFlows = default(512);
+        // Used only when pintAutoScaleEncoding is false.
+        double pintLogBase = default(1.05);
 
         dropperClass = default("inet::queueing::PacketAtCollectionEndDropper");
 }
