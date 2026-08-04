@@ -9,13 +9,28 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
+#include "../../../common/PintFlowCount.h"
 #include "../../../common/PintQueueingDelay.h"
 
 namespace inet {
 namespace tcp {
 
 Register_Class(OrbtcpPintFlavour);
+
+namespace {
+
+uint32_t clampWindow(double window)
+{
+    if (!std::isfinite(window) || window <= 0)
+        return 0;
+
+    return static_cast<uint32_t>(std::min(window,
+            static_cast<double>(std::numeric_limits<uint32_t>::max())));
+}
+
+} // namespace
 
 void OrbtcpPintFlavour::initialize()
 {
@@ -42,6 +57,20 @@ void OrbtcpPintFlavour::updateRttTelemetry(const IntDataVec& intData)
     state->queueingDelay =
             pint::decodeQueueingDelay(intData.front().getQueueingDelayCode());
     conn->emit(queueingDelaySignal, state->queueingDelay);
+}
+
+void OrbtcpPintFlavour::processRexmitTimer(TcpEventCode& event)
+{
+    state->initialPhase = false;
+    state->endInitialPhase = false;
+    OrbtcpFlavour::processRexmitTimer(event);
+}
+
+void OrbtcpPintFlavour::rackLossDetected()
+{
+    state->initialPhase = false;
+    state->endInitialPhase = false;
+    OrbtcpFlavour::rackLossDetected();
 }
 
 double OrbtcpPintFlavour::measureInflight(IntDataVec intData)
@@ -88,9 +117,14 @@ double OrbtcpPintFlavour::measureInflight(IntDataVec intData)
     if (!initReactTimer->isScheduled())
         conn->scheduleAt(simTime() + startupDelay, initReactTimer);
 
-    state->sharingFlows =
-            std::max(1, pintData.getNumOfFlows());
-    state->initialPhaseSharingFlows = 0;
+    const uint32_t totalFlowCount = pint::decodeFlowCount(
+            pintData.getPintTotalFlowCountCode());
+    if (totalFlowCount == 0)
+        return 0;
+
+    state->sharingFlows = totalFlowCount;
+    state->initialPhaseSharingFlows = pint::decodeFlowCount(
+            pintData.getPintInitialFlowCountCode());
     state->bottBW = static_cast<uint32_t>(bottleneckBandwidth);
     state->queueingDelay =
             pint::decodeQueueingDelay(pintData.getQueueingDelayCode());
@@ -115,12 +149,29 @@ double OrbtcpPintFlavour::measureInflight(IntDataVec intData)
             state->ssthresh = 0;
         }
         else {
-            state->ssthresh =
+            simtime_t startupRtt = smoothedEstimatedRtt;
+            if (startupRtt <= SIMTIME_ZERO)
+                startupRtt = rtt > SIMTIME_ZERO ? rtt : state->srtt;
+            if (startupRtt <= SIMTIME_ZERO)
+                startupRtt = state->T;
+
+            const int initialPhaseFlows =
+                    std::max(1, state->initialPhaseSharingFlows);
+            // N sets the fair-rate ceiling; S divides one link-wide 5% startup budget.
+            const double fairWindow = state->eta *
                     (bottleneckBandwidth / state->sharingFlows) *
-                    smoothedEstimatedRtt.dbl() * state->eta;
-            state->additiveIncrease = state->ssthresh > state->snd_cwnd ?
-                    state->ssthresh - state->snd_cwnd : 0;
-            state->endInitialPhase = true;
+                    startupRtt.dbl();
+            const double remainingWindow = std::max(0.0,
+                    fairWindow - state->snd_cwnd);
+            const double startupIncreaseBudget =
+                    (bottleneckBandwidth / initialPhaseFlows) *
+                    startupRtt.dbl() * state->additiveIncreasePercent;
+
+            state->ssthresh = clampWindow(fairWindow);
+            state->endInitialPhase = utilization >= state->eta;
+            state->additiveIncrease = state->endInitialPhase ? 0 :
+                    clampWindow(std::min(remainingWindow,
+                            startupIncreaseBudget));
         }
     }
 
@@ -132,6 +183,40 @@ double OrbtcpPintFlavour::measureInflight(IntDataVec intData)
     conn->emit(ssthreshSignal, state->ssthresh);
 
     return state->u;
+}
+
+uint32_t OrbtcpPintFlavour::computeWnd(double u, bool updateWc)
+{
+    // Keep ACK-burst feedback from applying the per-RTT increase more than once.
+    if (!updateWc)
+        return state->snd_cwnd;
+
+    const double currentWindow = state->snd_cwnd;
+    double targetWindow = u >= state->eta ?
+            currentWindow / (u / state->eta) + state->additiveIncrease :
+            currentWindow + state->additiveIncrease;
+
+    if (state->initialPhase && state->ssthresh > 0)
+        targetWindow = std::min(targetWindow,
+                static_cast<double>(state->ssthresh));
+
+    uint32_t targetWnd = clampWindow(targetWindow);
+    const bool cwndLimited = isCwndLimited();
+    targetWnd = limitCwndGrowth(targetWnd, cwndLimited);
+    conn->emit(cwndLimitedSignal, cwndLimited);
+
+    updateWindow = false;
+    state->prevWnd = targetWnd;
+    if (state->initialPhase && state->ssthresh > 0 &&
+            targetWnd >= state->ssthresh)
+        state->endInitialPhase = true;
+    if (state->endInitialPhase) {
+        state->initialPhase = false;
+        state->endInitialPhase = false;
+    }
+    conn->emit(txRateSignal, state->txRate);
+
+    return targetWnd;
 }
 
 } // namespace tcp

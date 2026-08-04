@@ -75,7 +75,8 @@ class PintQueue : public PacketQueue
     virtual void markFlow(std::vector<uint64_t>& bitmap, uint64_t flowId);
     virtual double estimateFlowCount(const std::vector<uint64_t>& bitmap) const;
     virtual void resetFlowCounters();
-    virtual int getFeedbackFlowCount(bool initialPhase) const;
+    virtual int getTotalFlowCount() const;
+    virtual int getInitialPhaseFlowCount() const;
 
     virtual double updatePintUtilization(uint64_t packetBytes, uint64_t queueBytes,
             double bandwidthBytesPerSecond);

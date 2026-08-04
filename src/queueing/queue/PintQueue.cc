@@ -17,6 +17,7 @@
 #include "inet/transportlayer/tcp_common/TcpHeader_m.h"
 
 #include "../../common/IntTag_m.h"
+#include "../../common/PintFlowCount.h"
 #include "../../common/PintQueueingDelay.h"
 #include "../../common/PintSenderTelemetry.h"
 
@@ -180,11 +181,14 @@ void PintQueue::resetFlowCounters()
     std::fill(initialPhaseFlowBitmap.begin(), initialPhaseFlowBitmap.end(), 0);
 }
 
-int PintQueue::getFeedbackFlowCount(bool initialPhase) const
+int PintQueue::getTotalFlowCount() const
 {
-    const int feedbackCount = initialPhase ?
-            numberOfInitialPhaseFlows : numberOfFlows;
-    return std::clamp(feedbackCount, 1, 65535);
+    return std::clamp(numberOfFlows, 1, 65535);
+}
+
+int PintQueue::getInitialPhaseFlowCount() const
+{
+    return std::clamp(numberOfInitialPhaseFlows, 0, 65535);
 }
 
 double PintQueue::updatePintUtilization(uint64_t packetBytes, uint64_t queueBytes,
@@ -376,14 +380,23 @@ Packet *PintQueue::pullPacket(cGate *gate)
                     const int hopId = getParentModule()->getParentModule()->getId();
                     const uint16_t power = encodePintUtilization(localUtilization);
                     const double decodedUtilization = decodePintUtilization(power);
-                    const int feedbackFlowCount =
-                            getFeedbackFlowCount(intTag->getInitialPhase());
+                    const int totalFlowCount = getTotalFlowCount();
+                    const bool initialPhase = intTag->getInitialPhase();
+                    const int initialPhaseFlowCount = initialPhase ?
+                            std::max(1, getInitialPhaseFlowCount()) : 0;
+                    const uint32_t totalFlowCountCode =
+                            pint::encodeFlowCount(totalFlowCount);
+                    const uint32_t initialFlowCountCode = initialPhase ?
+                            pint::encodeFlowCount(initialPhaseFlowCount) : 0;
+                    const uint32_t decodedTotalFlowCount =
+                            pint::decodeFlowCount(totalFlowCountCode);
                     const double localFairShare =
-                            bandwidthBytesPerSecond / feedbackFlowCount;
+                            bandwidthBytesPerSecond / decodedTotalFlowCount;
                     const bool hasBottleneckRecord = intData.getB() > 0;
                     const double currentFairShare = hasBottleneckRecord ?
                             intData.getB() /
-                            std::max(1, intData.getNumOfFlows()) :
+                            std::max(1U, pint::decodeFlowCount(
+                                    intData.getPintTotalFlowCountCode())) :
                             0;
 
                     intData.setPathDigest(updatePathDigest(
@@ -403,7 +416,9 @@ Packet *PintQueue::pullPacket(cGate *gate)
                         intData.setRxQlen(0);
                         intData.setTxBytes(0);
                         intData.setAverageRtt(0);
-                        intData.setNumOfFlows(feedbackFlowCount);
+                        intData.setPintTotalFlowCountCode(totalFlowCountCode);
+                        if (initialPhase)
+                            intData.setPintInitialFlowCountCode(initialFlowCountCode);
                     }
 
                     cSimpleModule::emit(pintDecodedUtilizationSignal, decodedUtilization);

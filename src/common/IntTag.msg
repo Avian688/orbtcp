@@ -23,14 +23,16 @@ class IntMetaData extends cObject
 	long txBytes; // Transmitted Bytes
 	long b; //Link bandwidth capacity
 	double averageRtt;
-	int numOfFlows;
+	int numOfFlows; // Legacy full-INT active-flow estimate
 	double effectiveNumOfFlows;
 	long rxQlen; // RX Queue Length
-	int numOfFlowsInInitialPhase;
+	int numOfFlowsInInitialPhase; // Legacy full-INT startup-flow estimate
 	int pintPower; // Conceptual encoded PINT field
 	double pintUtilization; // Decoded simulation value, not additional modeled wire overhead
 	unsigned int pathDigest; // 32-bit order-sensitive OrbCC path fingerprint
 	unsigned int queueingDelayCode; // 12-bit cumulative fixed-point queue residence time
+	unsigned int pintTotalFlowCountCode; // 8-bit N, present in every PINT record
+	unsigned int pintInitialFlowCountCode; // Optional 8-bit S when initialPhase is true
 }
 
 class IntTag extends TagBase
@@ -41,6 +43,6 @@ class IntTag extends TagBase
     unsigned int cwnd;
 	unsigned int pintBaseRttCode; // 24-bit value in microseconds
 	unsigned int pintCwndCode; // 16-bit floating-point congestion window in bytes
-	bool initialPhase = true;
+	bool initialPhase = false; // Set explicitly by the data sender
 	bool retrans = false;
 }

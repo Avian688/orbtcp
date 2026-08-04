@@ -29,11 +29,14 @@ class OrbtcpPintFlavour : public OrbtcpFlavour
     virtual void initialize() override;
 
     virtual void updateRttTelemetry(const IntDataVec& intData) override;
+    virtual void processRexmitTimer(TcpEventCode& event) override;
+    virtual void rackLossDetected() override;
 
   public:
     OrbtcpPintFlavour() = default;
     virtual ~OrbtcpPintFlavour() = default;
 
+    virtual uint32_t computeWnd(double u, bool updateWc) override;
     virtual double measureInflight(IntDataVec intData) override;
 };
 
