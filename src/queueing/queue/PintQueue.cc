@@ -100,6 +100,8 @@ void PintQueue::initialize(int stage)
         const int bitmapWords = (flowCardinalityBits + 63) / 64;
         activeFlowBitmap.assign(bitmapWords, 0);
         initialPhaseFlowBitmap.assign(bitmapWords, 0);
+        measurementFlowBitmap.assign(bitmapWords, 0);
+        initialPhaseMeasurementFlowBitmap.assign(bitmapWords, 0);
     }
 
     measurementTimer = new cMessage("PINT measurement timer");
@@ -132,11 +134,14 @@ void PintQueue::processMeasurementTimer()
         avgRtt = pintInitialRtt;
 
     if (flowCountSketchEnabled) {
+        rotateFlowCounterBitmaps();
         numberOfFlows = std::max(1,
-                static_cast<int>(std::lround(estimateFlowCount(activeFlowBitmap))));
+                static_cast<int>(std::lround(
+                        estimateFlowCount(measurementFlowBitmap))));
         numberOfInitialPhaseFlows = std::max(0,
                 static_cast<int>(std::lround(
-                        estimateFlowCount(initialPhaseFlowBitmap))));
+                        estimateFlowCount(
+                                initialPhaseMeasurementFlowBitmap))));
     }
     else {
         numberOfFlows = std::max(1, static_cast<int>(activeFlowIds.size()));
@@ -156,7 +161,7 @@ void PintQueue::processMeasurementTimer()
 
     sumRttByCwnd = 0;
     sumRttSquareByCwnd = 0;
-    resetFlowCounters();
+    resetCompletedFlowCounters();
 
     measurementInterval = avgRtt;
     scheduleMeasurementTimer();
@@ -202,12 +207,23 @@ double PintQueue::estimateFlowCount(const std::vector<uint64_t>& bitmap) const
             std::log(static_cast<double>(zeroBits) / flowCardinalityBits);
 }
 
-void PintQueue::resetFlowCounters()
+void PintQueue::resetCompletedFlowCounters()
 {
-    std::fill(activeFlowBitmap.begin(), activeFlowBitmap.end(), 0);
-    std::fill(initialPhaseFlowBitmap.begin(), initialPhaseFlowBitmap.end(), 0);
-    activeFlowIds.clear();
-    initialPhaseFlowIds.clear();
+    if (flowCountSketchEnabled) {
+        std::fill(measurementFlowBitmap.begin(), measurementFlowBitmap.end(), 0);
+        std::fill(initialPhaseMeasurementFlowBitmap.begin(),
+                initialPhaseMeasurementFlowBitmap.end(), 0);
+    }
+    else {
+        activeFlowIds.clear();
+        initialPhaseFlowIds.clear();
+    }
+}
+
+void PintQueue::rotateFlowCounterBitmaps()
+{
+    activeFlowBitmap.swap(measurementFlowBitmap);
+    initialPhaseFlowBitmap.swap(initialPhaseMeasurementFlowBitmap);
 }
 
 int PintQueue::getTotalFlowCount() const

@@ -38,6 +38,7 @@ class OrbtcpPintFlavour : public OrbtcpFlavour
     OrbtcpPintFlavour() = default;
     virtual ~OrbtcpPintFlavour() = default;
 
+    virtual void established(bool active) override;
     virtual uint32_t computeWnd(double u, bool updateWc) override;
     virtual double measureInflight(IntDataVec intData) override;
 };

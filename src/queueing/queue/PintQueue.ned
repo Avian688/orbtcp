@@ -52,6 +52,7 @@ simple PintQueue extends PacketQueue
 
         // Set false for an exact per-interval flow set, matching base OrbCC.
         bool flowCountSketchEnabled = default(true);
+        // N and S each use active and completed-epoch bitmap banks.
         int flowCardinalityBits = default(4096);
         int flowSketchSeed = default(1337);
 

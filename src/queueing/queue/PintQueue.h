@@ -66,8 +66,11 @@ class PintQueue : public PacketQueue
     bool flowCountSketchEnabled = true;
     bool pintAutoScaleEncoding = false;
 
+    // Packets update the active banks while the previous epoch is measured.
     std::vector<uint64_t> activeFlowBitmap;
     std::vector<uint64_t> initialPhaseFlowBitmap;
+    std::vector<uint64_t> measurementFlowBitmap;
+    std::vector<uint64_t> initialPhaseMeasurementFlowBitmap;
     std::set<uint64_t> activeFlowIds;
     std::set<uint64_t> initialPhaseFlowIds;
 
@@ -82,7 +85,8 @@ class PintQueue : public PacketQueue
 
     virtual void markFlow(std::vector<uint64_t>& bitmap, uint64_t flowId);
     virtual double estimateFlowCount(const std::vector<uint64_t>& bitmap) const;
-    virtual void resetFlowCounters();
+    virtual void rotateFlowCounterBitmaps();
+    virtual void resetCompletedFlowCounters();
     virtual int getTotalFlowCount() const;
     virtual int getInitialPhaseFlowCount() const;
 
