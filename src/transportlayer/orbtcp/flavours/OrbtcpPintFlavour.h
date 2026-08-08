@@ -33,6 +33,7 @@ class OrbtcpPintFlavour : public OrbtcpFlavour
     virtual void updateRttTelemetry(const IntDataVec& intData) override;
     virtual void processRexmitTimer(TcpEventCode& event) override;
     virtual void rackLossDetected() override;
+    virtual bool usesPintTelemetry() const override { return true; }
 
   public:
     OrbtcpPintFlavour() = default;
@@ -40,7 +41,7 @@ class OrbtcpPintFlavour : public OrbtcpFlavour
 
     virtual void established(bool active) override;
     virtual uint32_t computeWnd(double u, bool updateWc) override;
-    virtual double measureInflight(IntDataVec intData) override;
+    virtual double measureInflight(const IntDataVec& intData) override;
 };
 
 } // namespace tcp

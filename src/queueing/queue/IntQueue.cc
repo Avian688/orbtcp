@@ -175,6 +175,8 @@ void IntQueue::pushPacket(Packet *packet, cGate *gate)
                 numOfFlowsInInitialPhase = initialPhaseFlowIds.size();
 
                 auto& intDataVector = tcpHeader->addTagIfAbsent<IntTag>()->getIntDataForUpdate();
+                if (intDataVector.empty())
+                    intDataVector.reserve(16);
                 intDataVector.emplace_back();
                 intDataVector.back().setRxQlen(queue.getByteLength());
             }

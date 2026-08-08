@@ -26,7 +26,7 @@ class OrbtcpNewFlavour : public OrbtcpFlavour
   public:
     OrbtcpNewFlavour() = default;
 
-    virtual double measureInflight(IntDataVec intData) override;
+    virtual double measureInflight(const IntDataVec& intData) override;
 };
 
 } // namespace tcp

@@ -137,7 +137,7 @@ void OrbtcpSeqFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tAcked)
     conn->emit(rtoSignal, rto);
 }
 
-void OrbtcpSeqFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
+void OrbtcpSeqFlavour::receivedDataAck(uint32_t firstSeqAcked, const IntDataVec& intData)
 {
     EV_INFO << "\nORBTCPInfo ___________________________________________" << endl;
     EV_INFO << "\nORBTCPInfo - Received Data Ack" << endl;
@@ -203,7 +203,7 @@ void OrbtcpSeqFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intDat
     conn->emit(sndMaxSignal, state->snd_max);
 }
 
-void OrbtcpSeqFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData)
+void OrbtcpSeqFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, const IntDataVec& intData)
 {
     TcpTahoeRenoFamily::receivedDuplicateAck();
 
@@ -292,7 +292,7 @@ void OrbtcpSeqFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec i
     sendData(false);
 }
 
-double OrbtcpSeqFlavour::measureInflight(IntDataVec intData)
+double OrbtcpSeqFlavour::measureInflight(const IntDataVec& intData)
 {
     double u = 0;
     double tau;

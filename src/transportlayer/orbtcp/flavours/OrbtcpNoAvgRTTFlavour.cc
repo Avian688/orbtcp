@@ -146,7 +146,7 @@ void OrbtcpNoAvgRTTFlavour::rttMeasurementComplete(simtime_t tSent, simtime_t tA
     conn->emit(rtoSignal, rto);
 }
 
-void OrbtcpNoAvgRTTFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
+void OrbtcpNoAvgRTTFlavour::receivedDataAck(uint32_t firstSeqAcked, const IntDataVec& intData)
 {
     TcpTahoeRenoFamily::receivedDataAck(firstSeqAcked);
     EV_INFO << "\nORBTCPInfo ___________________________________________" << endl;
@@ -210,7 +210,7 @@ void OrbtcpNoAvgRTTFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec i
     conn->emit(sndMaxSignal, state->snd_max);
 }
 
-void OrbtcpNoAvgRTTFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData)
+void OrbtcpNoAvgRTTFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, const IntDataVec& intData)
 {
     bool isHighRxtLost = dynamic_cast<TcpPacedConnection*>(conn)->checkIsLost(state->snd_una+state->snd_mss);
     bool rackLoss = dynamic_cast<TcpPacedConnection*>(conn)->checkRackLoss();
@@ -293,7 +293,7 @@ void OrbtcpNoAvgRTTFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntData
     }
 }
 
-double OrbtcpNoAvgRTTFlavour::measureInflight(IntDataVec intData)
+double OrbtcpNoAvgRTTFlavour::measureInflight(const IntDataVec& intData)
 {
     TcpPacedConnection::RateSample rs = dynamic_cast<TcpPacedConnection*>(conn)->getRateSample();
 

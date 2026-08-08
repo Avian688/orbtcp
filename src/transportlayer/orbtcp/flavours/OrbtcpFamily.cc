@@ -39,12 +39,12 @@ OrbtcpFamily::OrbtcpFamily() : TcpPacedFamily(),
 {
 }
 
-void OrbtcpFamily::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
+void OrbtcpFamily::receivedDataAck(uint32_t firstSeqAcked, const IntDataVec&)
 {
     TcpPacedFamily::receivedDataAck(firstSeqAcked);
 }
 
-void OrbtcpFamily::receiveSeqChanged(IntDataVec intData)
+void OrbtcpFamily::receiveSeqChanged(const IntDataVec& intData)
 {
     // If we send a data segment already (with the updated seqNo) there is no need to send an additional ACK
     if (state->full_sized_segment_counter == 0 && !state->ack_now && state->last_ack_sent == state->rcv_nxt && !delayedAckTimer->isScheduled()) { // ackSent?
@@ -83,7 +83,7 @@ void OrbtcpFamily::receiveSeqChanged(IntDataVec intData)
     }
 }
 
-void OrbtcpFamily::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData) {
+void OrbtcpFamily::receivedDuplicateAck(uint32_t, const IntDataVec&) {
 
 }
 
@@ -111,7 +111,12 @@ bool OrbtcpFamily::getInitialPhase()
     return state->initialPhase;
 }
 
-void OrbtcpFamily::receivedOutOfOrderSegment(IntDataVec intData)
+bool OrbtcpFamily::usesPintTelemetry() const
+{
+    return false;
+}
+
+void OrbtcpFamily::receivedOutOfOrderSegment(const IntDataVec& intData)
 {
     state->ack_now = true;
     EV_INFO << "Out-of-order segment, sending immediate ACK\n";

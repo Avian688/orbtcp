@@ -91,7 +91,7 @@ void OrbtcpPintFlavour::rackLossDetected()
     state->prevWnd = state->snd_cwnd;
 }
 
-double OrbtcpPintFlavour::measureInflight(IntDataVec intData)
+double OrbtcpPintFlavour::measureInflight(const IntDataVec& intData)
 {
     if (intData.empty())
         return 0;

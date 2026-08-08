@@ -44,7 +44,7 @@ protected:
 public:
     virtual uint32_t sendSegment(uint32_t bytes) override;
 public:
-    virtual void sendIntAck(IntDataVec intData);
+    virtual void sendIntAck(const IntDataVec& intData);
 public:
     std::queue<Packet*> packetQueue;
 

@@ -22,7 +22,7 @@ namespace tcp {
 
 Register_Class(OrbtcpNewFlavour);
 
-double OrbtcpNewFlavour::measureInflight(IntDataVec intData)
+double OrbtcpNewFlavour::measureInflight(const IntDataVec& intData)
 {
     double u = 0;
     double tau = 0;

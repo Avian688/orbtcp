@@ -124,11 +124,11 @@ class OrbtcpFlavour : public OrbtcpFamily
 
     virtual void rttMeasurementComplete(simtime_t tSent, simtime_t tAcked) override;
 
-    virtual void receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData) override;
+    virtual void receivedDataAck(uint32_t firstSeqAcked, const IntDataVec& intData) override;
 
     virtual uint32_t computeWnd(double u, bool updateWc);
 
-    virtual double measureInflight(IntDataVec intData);
+    virtual double measureInflight(const IntDataVec& intData);
 
     virtual size_t getConnId() override;
 
@@ -140,7 +140,7 @@ class OrbtcpFlavour : public OrbtcpFamily
 
     /** Redefine what should happen when dupAck was received, to add congestion window management */
 
-    virtual void receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData) override;
+    virtual void receivedDuplicateAck(uint32_t firstSeqAcked, const IntDataVec& intData) override;
 
     virtual void processTimer(cMessage *timer, TcpEventCode& event) override;
 

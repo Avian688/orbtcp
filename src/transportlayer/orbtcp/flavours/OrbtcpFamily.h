@@ -34,11 +34,11 @@ class OrbtcpFamily : public TcpPacedFamily
     /** Ctor */
     OrbtcpFamily();
 
-    virtual void receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData);
+    virtual void receivedDataAck(uint32_t firstSeqAcked, const IntDataVec& intData);
 
-    virtual void receiveSeqChanged(IntDataVec intData);
+    virtual void receiveSeqChanged(const IntDataVec& intData);
 
-    virtual void receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData);
+    virtual void receivedDuplicateAck(uint32_t firstSeqAcked, const IntDataVec& intData);
 
     virtual void updateRttTelemetry(const IntDataVec& intData);
 
@@ -50,7 +50,9 @@ class OrbtcpFamily : public TcpPacedFamily
 
     virtual bool getInitialPhase();
 
-    virtual void receivedOutOfOrderSegment(IntDataVec intData);
+    virtual bool usesPintTelemetry() const;
+
+    virtual void receivedOutOfOrderSegment(const IntDataVec& intData);
 
 
 };

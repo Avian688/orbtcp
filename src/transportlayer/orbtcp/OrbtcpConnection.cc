@@ -125,8 +125,7 @@ TcpEventCode OrbtcpConnection::processSegment1stThru8th(Packet *tcpSegment, cons
 //            }
 
             if(tcpHeader->findTag<IntTag>()){
-                IntDataVec intData = tcpHeader->getTag<IntTag>()->getIntData();
-                sendIntAck(intData);
+                sendIntAck(tcpHeader->getTag<IntTag>()->getIntData());
             }
             else{
                 std::cout << "\n SHIT ACK" << endl;
@@ -369,8 +368,7 @@ TcpEventCode OrbtcpConnection::processSegment1stThru8th(Packet *tcpSegment, cons
         //
 
         if(tcpHeader->findTag<IntTag>()){
-            IntDataVec intData = tcpHeader->getTag<IntTag>()->getIntData();
-            sendIntAck(intData);
+            sendIntAck(tcpHeader->getTag<IntTag>()->getIntData());
         }
         else{
             sendAck();
@@ -491,7 +489,6 @@ TcpEventCode OrbtcpConnection::processSegment1stThru8th(Packet *tcpSegment, cons
 //                        std::cout << "\n RECEIVED OUT OF ORDER SEGMENT AT RECEIVER. SEQ NO: " << tcpHeader->getSequenceNo() << endl;
 //                    }
                     if(tcpHeader->findTag<IntTag>()){
-                        IntDataVec intDataNew = tcpHeader->getTag<IntTag>()->getIntData();
                         dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->receivedOutOfOrderSegment(tcpHeader->getTag<IntTag>()->getIntData());
                     }
                     else{
@@ -960,7 +957,7 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
     return true;
 }
 
-void OrbtcpConnection::sendIntAck(IntDataVec intData)
+void OrbtcpConnection::sendIntAck(const IntDataVec& intData)
 {
     const auto& tcpHeader = makeShared<TcpHeader>();
 
@@ -994,12 +991,9 @@ void OrbtcpConnection::sendIntAck(IntDataVec intData)
     //std::cout << "\nSending Ack (after options)..." << tcpHeader->str() << endl;
     writeHeaderOptions(tcpHeader);
 
-    tcpHeader->addTagIfAbsent<IntTag>();
-    int vecSize = intData.size();
-    for(int i = 0; i < vecSize; i++){
-        tcpHeader->addTagIfAbsent<IntTag>()->getIntDataForUpdate().push_back(intData[i]);
-    }
-    intData.clear();
+    // The data packet retains ownership; copy its telemetry exactly once into
+    // the ACK instead of copying into this call and growing another vector.
+    tcpHeader->addTagIfAbsent<IntTag>()->setIntData(intData);
 
     Packet *fp = new Packet("TcpAck");
     // rfc-3168 page 20: pure ack packets must be sent with not-ECT codepoint
@@ -1110,8 +1104,10 @@ uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
     intTag->setConnId(static_cast<unsigned long>(orbAlgorithm->getConnId()));
     intTag->setRtt(estimatedRtt);
     intTag->setCwnd(cwnd);
-    intTag->setPintBaseRttCode(pint::encodeBaseRtt(estimatedRtt.dbl()));
-    intTag->setPintCwndCode(pint::encodeCwnd(cwnd));
+    if (orbAlgorithm->usesPintTelemetry()) {
+        intTag->setPintBaseRttCode(pint::encodeBaseRtt(estimatedRtt.dbl()));
+        intTag->setPintCwndCode(pint::encodeCwnd(cwnd));
+    }
     intTag->setInitialPhase(orbAlgorithm->getInitialPhase());
     intTag->setRetrans(rexmitQueue->isRetransmitted(state->snd_nxt));
 
