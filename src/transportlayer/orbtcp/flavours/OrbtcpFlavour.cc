@@ -6,6 +6,7 @@
 
 #include <algorithm> // min,max
 #include <cmath>
+#include <limits>
 #include <utility>
 
 #include "inet/transportlayer/tcp/Tcp.h"
@@ -18,6 +19,19 @@ namespace tcp {
 #define MAX_REXMIT_TIMEOUT     240   // 2 * MSL (RFC 1122)
 
 Register_Class(OrbtcpFlavour);
+
+namespace {
+
+uint32_t clampWindow(double window)
+{
+    if (!std::isfinite(window) || window <= 0)
+        return 0;
+
+    return static_cast<uint32_t>(std::min(window,
+            static_cast<double>(std::numeric_limits<uint32_t>::max())));
+}
+
+} // namespace
 
 simsignal_t OrbtcpFlavour::txRateSignal = cComponent::registerSignal("txRate");
 simsignal_t OrbtcpFlavour::tauSignal = cComponent::registerSignal("tau");
@@ -68,8 +82,9 @@ void OrbtcpFlavour::initialize()
     state->T = conn->getTcpMain()->par("basePropagationRTT");
     state->queueingDelay = 0;
     state->additiveIncrease = 1;
-    state->prevWnd = 10000;
+    state->prevWnd = 0;
     state->initialPhase = false;
+    state->endInitialPhase = false;
     state->L.clear();
     firstRTT = true;
     initPackets = false;
@@ -95,6 +110,7 @@ void OrbtcpFlavour::established(bool active)
 {
     //state->snd_cwnd = state->B * state->T.dbl();
     state->snd_cwnd = 7300; //5 packets
+    state->prevWnd = state->snd_cwnd;
     dynamic_cast<OrbtcpConnection*>(conn)->changeIntersendingTime(0.000001); //do not pace intial packets as RTT is unknown
     state->ssthresh = 73000;
     connId = std::hash<std::string>{}(conn->localAddr.str() + "/" + std::to_string(conn->localPort) + "/" + conn->remoteAddr.str() + "/" + std::to_string(conn->remotePort));
@@ -336,6 +352,8 @@ double OrbtcpFlavour::measureInflight(const IntDataVec& intData)
     uint32_t bottleneckTxBytes = 0;
     double bottleneckRtt = 0;
     double bottleneckSharingFlows = 1;
+    int bottleneckInitialPhaseFlows = 0;
+    double bottleneckFairRate = 0;
     int currentBottleneckId = -1;
     bool foundBottleneck = false;
     uint16_t currentPathId = 0;
@@ -361,13 +379,19 @@ double OrbtcpFlavour::measureInflight(const IntDataVec& intData)
 
                     const double connectionCount = std::max(1.0,
                             static_cast<double>(intDataEntry.getNumOfFlows()));
-                    const double fairRate = state->eta * bandwidth / connectionCount;
-                    if (state->eta > 0 && fairRate > 0 && std::isfinite(fairRate) &&
+                    const double fairRate = bandwidth / connectionCount;
+                    const double controlledFairRate = state->eta * fairRate;
+                    if (state->eta > 0 && controlledFairRate > 0 &&
+                            std::isfinite(controlledFairRate) &&
                             std::isfinite(uPrime))
-                        measuredPathHopMetrics.push_back({hopId, uPrime, fairRate,
+                        measuredPathHopMetrics.push_back({hopId, uPrime, controlledFairRate,
                                 sampleInterval, intDataEntry.getAverageRtt(), bandwidth});
 
-                    if(std::isfinite(uPrime) && uPrime > u) {
+                    const bool higherUtilization = uPrime > u;
+                    const bool tighterEqualUtilizationHop = foundBottleneck &&
+                            uPrime == u && fairRate < bottleneckFairRate;
+                    if(std::isfinite(uPrime) && std::isfinite(fairRate) &&
+                            (higherUtilization || tighterEqualUtilizationHop)) {
                         u = uPrime;
                         tau = sampleInterval;
 
@@ -377,6 +401,9 @@ double OrbtcpFlavour::measureInflight(const IntDataVec& intData)
                         bottleneckTxRate = hopTxRate;
                         bottleneckTxBytes = intDataEntry.getTxBytes() - state->L.at(i).getTxBytes();
                         bottleneckBandwidth = bandwidth;
+                        bottleneckInitialPhaseFlows = std::max(0,
+                                intDataEntry.getNumOfFlowsInInitialPhase());
+                        bottleneckFairRate = fairRate;
                         currentBottleneckId = hopId;
                         foundBottleneck = true;
                     }
@@ -400,7 +427,8 @@ double OrbtcpFlavour::measureInflight(const IntDataVec& intData)
         bottleneckId = -1;
         pathHopMetrics.clear();
         state->L = intData;
-        return state->u;
+        return 0;
+        //return state->u;
     }
 
     // A first or stale INT sample cannot define a rate interval yet. Do not
@@ -414,6 +442,7 @@ double OrbtcpFlavour::measureInflight(const IntDataVec& intData)
     }
 
     state->sharingFlows = std::max(1.0, bottleneckSharingFlows);
+    state->initialPhaseSharingFlows = bottleneckInitialPhaseFlows;
     bottleneckId = currentBottleneckId;
 
 
@@ -447,20 +476,30 @@ double OrbtcpFlavour::measureInflight(const IntDataVec& intData)
             state->ssthresh = 0;
         }
         else{
-            state->ssthresh = (((bottleneckBandwidth/(state->sharingFlows+state->initialPhaseSharingFlows)) * smoothedEstimatedRtt.dbl()) * state->eta);
-            double initAI = state->additiveIncreasePercent;
-//            if(state->eta/state->sharingFlows < initAI){
-//                initAI = state->eta/state->sharingFlows;
-//            }
+            simtime_t startupRtt = smoothedEstimatedRtt;
+            if (startupRtt <= SIMTIME_ZERO)
+                startupRtt = rtt > SIMTIME_ZERO ? rtt : state->srtt;
+            if (startupRtt <= SIMTIME_ZERO)
+                startupRtt = state->T;
 
-            //state->additiveIncrease = ((((bottleneckBandwidth)/std::max(1, state->initialPhaseSharingFlows)) * rtt.dbl()) * initAI);
+            const int initialPhaseFlows =
+                    std::max(1, state->initialPhaseSharingFlows);
+            // N sets the fair-rate ceiling; S divides one link-wide 5% startup budget.
+            const double fairWindow = state->eta *
+                    (bottleneckBandwidth / state->sharingFlows) *
+                    startupRtt.dbl();
+            const double committedWindow = state->prevWnd > 0 ?
+                    state->prevWnd : state->snd_cwnd;
+            const double remainingWindow = std::max(0.0,
+                    fairWindow - committedWindow);
+            const double startupIncreaseBudget =
+                    (bottleneckBandwidth / initialPhaseFlows) *
+                    startupRtt.dbl() * state->additiveIncreasePercent;
 
-            state->additiveIncrease = state->ssthresh > state->snd_cwnd ?
-                    state->ssthresh - state->snd_cwnd : 0;
-
-            //if(state->snd_cwnd >= state->ssthresh){
-            state->endInitialPhase = true;
-            //}
+            state->ssthresh = clampWindow(fairWindow);
+            state->additiveIncrease = state->u >= state->eta ? 0 :
+                    clampWindow(std::min(remainingWindow,
+                            startupIncreaseBudget));
         }
     }
 
@@ -477,13 +516,19 @@ double OrbtcpFlavour::measureInflight(const IntDataVec& intData)
 
 uint32_t OrbtcpFlavour::computeWnd(double u, bool updateWc)
 {
-    uint32_t targetW;
-    if(u >= state->eta) {
-        targetW = (state->prevWnd/(u/state->eta)) + state->additiveIncrease;
-    }
-    else {
-        targetW = state->prevWnd + state->additiveIncrease;
-    }
+    // Fast reactions use the last committed window, so repeated ACKs cannot
+    // compound the per-RTT additive increase.
+    const double committedWindow = state->prevWnd > 0 ?
+            state->prevWnd : state->snd_cwnd;
+    double targetWindow = u >= state->eta ?
+            committedWindow / (u / state->eta) + state->additiveIncrease :
+            committedWindow + state->additiveIncrease;
+
+    if (state->initialPhase && state->ssthresh > 0)
+        targetWindow = std::min(targetWindow,
+                static_cast<double>(state->ssthresh));
+
+    uint32_t targetW = clampWindow(targetWindow);
 
     const bool cwndLimited = isCwndLimited();
     targetW = limitCwndGrowth(targetW, cwndLimited);
@@ -492,8 +537,13 @@ uint32_t OrbtcpFlavour::computeWnd(double u, bool updateWc)
     if(updateWc) {
         updateWindow = false;
         state->prevWnd = targetW;
+        if (state->initialPhase &&
+                (u >= state->eta ||
+                (state->ssthresh > 0 && targetW >= state->ssthresh)))
+            state->endInitialPhase = true;
         if(state->endInitialPhase){
             state->initialPhase = false;
+            state->endInitialPhase = false;
         }
         conn->emit(txRateSignal, state->txRate);
     }

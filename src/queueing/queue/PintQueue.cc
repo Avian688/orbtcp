@@ -27,6 +27,14 @@ namespace queueing {
 
 Define_Module(PintQueue);
 
+static Ptr<IntTag> getAttachedIntTagForUpdate(const Ptr<tcp::TcpHeader>& tcpHeader)
+{
+    // INET 4.5 may return the pre-detach region tag on the first COW lookup;
+    // reacquire it so updates target the tag attached to this TCP header.
+    tcpHeader->addTagIfAbsent<IntTag>();
+    return tcpHeader->addTagIfAbsent<IntTag>();
+}
+
 simsignal_t PintQueue::avgRttSignal = cComponent::registerSignal("avgRttQueue");
 simsignal_t PintQueue::numberOfFlowsSignal = cComponent::registerSignal("numberOfFlows");
 simsignal_t PintQueue::effectiveNumberOfFlowsSignal = cComponent::registerSignal("effectiveNumberOfFlows");
@@ -115,7 +123,6 @@ void PintQueue::handleMessage(cMessage *message)
     if (message == measurementTimer)
         processMeasurementTimer();
     else {
-        scheduleMeasurementTimer();
         auto packet = check_and_cast<Packet *>(message);
         pushPacket(packet, packet->getArrivalGate());
     }
@@ -123,6 +130,10 @@ void PintQueue::handleMessage(cMessage *message)
 
 void PintQueue::processMeasurementTimer()
 {
+    if (!telemetryActivitySinceLastTimer)
+        return;
+
+    telemetryActivitySinceLastTimer = false;
     const double bandwidthBytesPerSecond = getLinkBandwidthBytesPerSecond();
 
     if (fixedAvgRtt > SIMTIME_ZERO)
@@ -236,12 +247,12 @@ int PintQueue::getInitialPhaseFlowCount() const
     return std::clamp(numberOfInitialPhaseFlows, 0, 65535);
 }
 
-double PintQueue::updatePintUtilization(uint64_t packetBytes, uint64_t queueBytes,
+double PintQueue::updatePintUtilization(uint64_t payloadBytes, uint64_t queueBytes,
         double bandwidthBytesPerSecond)
 {
     const double rttSeconds = avgRtt > SIMTIME_ZERO ?
             avgRtt.dbl() : pintInitialRtt.dbl();
-    const double serializationTime = packetBytes / bandwidthBytesPerSecond;
+    const double payloadServiceTime = payloadBytes / bandwidthBytesPerSecond;
     const double queueUtilization =
             queueBytes / (bandwidthBytesPerSecond * rttSeconds);
 
@@ -253,10 +264,10 @@ double PintQueue::updatePintUtilization(uint64_t packetBytes, uint64_t queueByte
     }
 
     double tau = (simTime() - lastPintUpdate).dbl();
-    tau = std::max(tau, serializationTime);
+    tau = std::max(tau, payloadServiceTime);
 
     const double sample = queueUtilization +
-            packetBytes / (bandwidthBytesPerSecond * tau);
+            payloadBytes / (bandwidthBytesPerSecond * tau);
     // Use OrbCC's fixed alpha rather than HPCC's time-derived tau / RTT weight.
     pintUtilization = (1 - alpha) * pintUtilization + alpha * sample;
 
@@ -341,7 +352,6 @@ void PintQueue::pushPacket(Packet *packet, cGate *gate)
 {
     Enter_Method("pushPacket");
     take(packet);
-    const uint64_t packetBytesAtQueue = packet->getByteLength();
     cNamedObject packetPushStartedDetails("atomicOperationStarted");
     emit(packetPushStartedSignal, packet, &packetPushStartedDetails);
     EV_INFO << "Pushing packet" << EV_FIELD(packet) << EV_ENDL;
@@ -353,8 +363,13 @@ void PintQueue::pushPacket(Packet *packet, cGate *gate)
 
     if (ipv4Header->getProtocolId() == 6) {
         auto tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
-        if (packet->getDataLength() > b(0)) {
-            auto intTag = tcpHeader->addTagIfAbsent<IntTag>();
+        const uint64_t tcpPayloadBytes = packet->getByteLength();
+        if (tcpPayloadBytes > 0) {
+            auto intTag = getAttachedIntTagForUpdate(tcpHeader);
+            if (!telemetryActivitySinceLastTimer) {
+                telemetryActivitySinceLastTimer = true;
+                scheduleMeasurementTimer();
+            }
             const uint64_t flowId = static_cast<uint64_t>(intTag->getConnId());
 
             const double baseRtt =
@@ -363,7 +378,7 @@ void PintQueue::pushPacket(Packet *packet, cGate *gate)
                     pint::decodeCwnd(intTag->getPintCwndCode());
             if (baseRtt > 0 && cwndBytes > 0) {
                 const double weight =
-                        static_cast<double>(packetBytesAtQueue) / cwndBytes;
+                        static_cast<double>(tcpPayloadBytes) / cwndBytes;
                 sumRttByCwnd += baseRtt * weight;
                 sumRttSquareByCwnd += baseRtt * baseRtt * weight;
             }
@@ -414,7 +429,6 @@ Packet *PintQueue::pullPacket(cGate *gate)
 {
     Enter_Method("pullPacket");
     auto packet = check_and_cast<Packet *>(queue.front());
-    const uint64_t packetBytesAtQueue = packet->getByteLength();
     EV_INFO << "Pulling packet" << EV_FIELD(packet) << EV_ENDL;
 
     if (buffer != nullptr) {
@@ -434,11 +448,6 @@ Packet *PintQueue::pullPacket(cGate *gate)
     const uint64_t queueBytes = queue.getByteLength();
     const double bandwidthBytesPerSecond =
             getLinkBandwidthBytesPerSecond();
-    const double localUtilization = updatePintUtilization(
-            packetBytesAtQueue, queueBytes, bandwidthBytesPerSecond);
-    txBytes += packetBytesAtQueue;
-    cSimpleModule::emit(txBytesSignal, txBytes);
-    cSimpleModule::emit(pintLocalUtilizationSignal, localUtilization);
 
     auto ipv4Header = packet->removeAtFront<Ipv4Header>();
     if (ipv4Header->getTotalLengthField() < packet->getDataLength())
@@ -447,8 +456,18 @@ Packet *PintQueue::pullPacket(cGate *gate)
 
     if (ipv4Header->getProtocolId() == 6) {
         auto tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
+        const uint64_t tcpPayloadBytes = packet->getByteLength();
+        double localUtilization = 0;
+        if (tcpPayloadBytes > 0) {
+            localUtilization = updatePintUtilization(
+                    tcpPayloadBytes, queueBytes, bandwidthBytesPerSecond);
+            txBytes += tcpPayloadBytes;
+            cSimpleModule::emit(txBytesSignal, txBytes);
+            cSimpleModule::emit(pintLocalUtilizationSignal, localUtilization);
+        }
+
         if (tcpHeader->findTag<IntTag>()) {
-            auto intTag = tcpHeader->addTagIfAbsent<IntTag>();
+            auto intTag = getAttachedIntTagForUpdate(tcpHeader);
             auto& intDataVector = intTag->getIntDataForUpdate();
             if (!intDataVector.empty()) {
                 IntMetaData& intData = intDataVector.front();
@@ -457,7 +476,7 @@ Packet *PintQueue::pullPacket(cGate *gate)
 
                 // ACKs add their reverse-path queue residence without replacing
                 // the forward-path bottleneck record echoed by the receiver.
-                if (packet->getByteLength() > 0) {
+                if (tcpPayloadBytes > 0) {
                     const int hopId = getParentModule()->getParentModule()->getId();
                     const uint16_t power = encodePintUtilization(localUtilization);
                     const double decodedUtilization = pintBits == 0 ?

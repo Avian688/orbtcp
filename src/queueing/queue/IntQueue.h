@@ -44,6 +44,7 @@ protected:
     int numOfFlowsInInitialPhase;
     simtime_t avgRttTimer;
     cMessage *averageRttTimerMsg = nullptr;
+    bool telemetryActivitySinceLastTimer = false;
     //std::map<std::string, simtime_t> rtts;
     std::set<long> flowIds;
     std::set<long> initialPhaseFlowIds;
@@ -60,6 +61,7 @@ protected:
     virtual void processBWTimer();
     virtual void scheduleTimer();
     virtual void scheduleBWTimer();
+    virtual double getLinkBandwidthBytesPerSecond() const;
 
     virtual ~IntQueue();
 public:

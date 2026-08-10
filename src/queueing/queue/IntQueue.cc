@@ -14,6 +14,7 @@
 // 
 
 #include <algorithm>
+#include <cstdint>
 
 #include <inet/networklayer/ipv4/Ipv4Header_m.h>
 #include <inet/transportlayer/tcp_common/TcpHeader_m.h>
@@ -29,6 +30,14 @@ namespace inet {
 namespace queueing {
 
 Define_Module(IntQueue);
+
+static Ptr<IntTag> getAttachedIntTagForUpdate(const Ptr<tcp::TcpHeader>& tcpHeader)
+{
+    // INET 4.5 may return the pre-detach region tag on the first COW lookup;
+    // reacquire it so updates target the tag attached to this TCP header.
+    tcpHeader->addTagIfAbsent<IntTag>();
+    return tcpHeader->addTagIfAbsent<IntTag>();
+}
 
 simsignal_t IntQueue::avgRttSignal = cComponent::registerSignal("avgRttQueue");
 simsignal_t IntQueue::numberOfFlowsSignal = cComponent::registerSignal("numberOfFlows");
@@ -84,8 +93,6 @@ void IntQueue::handleMessage(cMessage *message)
         processBWTimer();
     }
     else{
-        scheduleTimer();
-
         auto packet = check_and_cast<Packet *>(message);
         pushPacket(packet, packet->getArrivalGate());
     }
@@ -93,35 +100,37 @@ void IntQueue::handleMessage(cMessage *message)
 
 void IntQueue::processTimer()
 {
-    if(sumRttSquareByCwnd > 0 && sumRttByCwnd > 0){
-        double queueingDelay = 0;
-        const double bytesPerSecond = static_cast<double>(bandwidth) / 8.0;
-        if(persistentQueueSize != 2147483647){
-            queueingDelay = bytesPerSecond > 0 ? static_cast<double>(persistentQueueSize) / bytesPerSecond : 0;
-            //cSimpleModule::emit(persistentQueueingDelaySignal, (persistentQueueSize / dynamic_cast<NetworkInterface*>(getParentModule())->getRxTransmissionChannel()->getNominalDatarate()/8));
-        }
-        queueingDelay = bytesPerSecond > 0 ? static_cast<double>(queue.getByteLength()) / bytesPerSecond : 0;
-        cSimpleModule::emit(persistentQueueingDelaySignal, queueingDelay);
-        if(fixedAvgRTTVal > 0){
-            avgRtt = fixedAvgRTTVal;
-        }
-        else{
-            avgRtt = SimTime(sumRttSquareByCwnd/sumRttByCwnd);
-        }
-        numbOfFlows = flowIds.size();
-        effectiveNumOfFlows = std::max(1, numbOfFlows);
+    if (!telemetryActivitySinceLastTimer)
+        return;
 
-        sumRttSquareByCwnd = 0;
-        sumRttByCwnd = 0;
-        changePersistentQueueSize = true;
-        flowIds.clear();
-        initialPhaseFlowIds.clear();
-        cSimpleModule::emit(avgRttSignal, avgRtt);
-        cSimpleModule::emit(numberOfFlowsSignal, numbOfFlows);
-        cSimpleModule::emit(effectiveNumberOfFlowsSignal, effectiveNumOfFlows);
-        cSimpleModule::emit(numOfFlowsInInitialPhaseSignal, numOfFlowsInInitialPhase);
-        scheduleTimer();
-    }
+    telemetryActivitySinceLastTimer = false;
+    const double bytesPerSecond = getLinkBandwidthBytesPerSecond();
+    const double queueingDelay = bytesPerSecond > 0 ?
+            static_cast<double>(queue.getByteLength()) / bytesPerSecond : 0;
+
+    if (fixedAvgRTTVal > 0)
+        avgRtt = fixedAvgRTTVal;
+    else if (sumRttSquareByCwnd > 0 && sumRttByCwnd > 0)
+        avgRtt = SimTime(sumRttSquareByCwnd / sumRttByCwnd);
+
+    numbOfFlows = flowIds.size();
+    effectiveNumOfFlows = std::max(1, numbOfFlows);
+    numOfFlowsInInitialPhase = initialPhaseFlowIds.size();
+
+    sumRttSquareByCwnd = 0;
+    sumRttByCwnd = 0;
+    changePersistentQueueSize = true;
+    flowIds.clear();
+    initialPhaseFlowIds.clear();
+
+    cSimpleModule::emit(persistentQueueingDelaySignal, queueingDelay);
+    cSimpleModule::emit(avgRttSignal, avgRtt);
+    cSimpleModule::emit(numberOfFlowsSignal, numbOfFlows);
+    cSimpleModule::emit(effectiveNumberOfFlowsSignal, effectiveNumOfFlows);
+    cSimpleModule::emit(numOfFlowsInInitialPhaseSignal, numOfFlowsInInitialPhase);
+
+    // One idle expiry is enough to retire a queue after its traffic stops.
+    scheduleTimer();
 }
 
 void IntQueue::processBWTimer()
@@ -146,6 +155,16 @@ void IntQueue::scheduleBWTimer()
     }
 }
 
+double IntQueue::getLinkBandwidthBytesPerSecond() const
+{
+    auto *networkInterface = dynamic_cast<NetworkInterface *>(getParentModule());
+    auto *channel = networkInterface != nullptr ?
+            networkInterface->getTxTransmissionChannel() : nullptr;
+    if (channel != nullptr && channel->getNominalDatarate() > 0)
+        return channel->getNominalDatarate() / 8.0;
+    return static_cast<double>(bandwidth) / 8.0;
+}
+
 void IntQueue::pushPacket(Packet *packet, cGate *gate)
 {
     Enter_Method("pushPacket");
@@ -163,6 +182,10 @@ void IntQueue::pushPacket(Packet *packet, cGate *gate)
         auto tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
         if(packet->getDataLength() > b(0)) { //Data Packet
             if(tcpHeader->findTag<IntTag>()){
+                if (!telemetryActivitySinceLastTimer) {
+                    telemetryActivitySinceLastTimer = true;
+                    scheduleTimer();
+                }
                 if(tcpHeader->getTag<IntTag>()->getRtt().dbl() > 0 && tcpHeader->getTag<IntTag>()->getCwnd() > 0){
                     sumRttByCwnd += tcpHeader->getTag<IntTag>()->getRtt().dbl() * packet->getByteLength() / tcpHeader->getTag<IntTag>()->getCwnd();
                     sumRttSquareByCwnd += tcpHeader->getTag<IntTag>()->getRtt().dbl() * tcpHeader->getTag<IntTag>()->getRtt().dbl() * packet->getByteLength() / tcpHeader->getTag<IntTag>()->getCwnd();
@@ -174,7 +197,8 @@ void IntQueue::pushPacket(Packet *packet, cGate *gate)
                 }
                 numOfFlowsInInitialPhase = initialPhaseFlowIds.size();
 
-                auto& intDataVector = tcpHeader->addTagIfAbsent<IntTag>()->getIntDataForUpdate();
+                auto intTag = getAttachedIntTagForUpdate(tcpHeader);
+                auto& intDataVector = intTag->getIntDataForUpdate();
                 if (intDataVector.empty())
                     intDataVector.reserve(16);
                 intDataVector.emplace_back();
@@ -239,18 +263,24 @@ Packet *IntQueue::pullPacket(cGate *gate)
     insertPacketEvent(this, packet, PEK_QUEUED, queueingTime, packetEvent);
     increaseTimeTag<QueueingTimeTag>(packet, queueingTime, queueingTime);
 
+    const long txQueueBytes = static_cast<long>(queue.getByteLength());
+
     auto ipv4Header = packet->removeAtFront<Ipv4Header>();
     if (ipv4Header->getTotalLengthField() < packet->getDataLength())
         packet->setBackOffset(B(ipv4Header->getTotalLengthField()) - ipv4Header->getChunkLength());
 
     if(ipv4Header->getProtocolId() == 6){
         auto tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
-        if(packet->getByteLength() > 0) { //Data Packet
-            txBytes += packet->getByteLength();
-            cSimpleModule::emit(txBytesSignal, txBytes);
+        const uint64_t tcpPayloadBytes = packet->getByteLength();
 
+        // OrbCC windows and delivery rates use TCP sequence-space bytes.
+        txBytes += tcpPayloadBytes;
+        cSimpleModule::emit(txBytesSignal, txBytes);
+
+        if(tcpPayloadBytes > 0) { // Data packet
             if(tcpHeader->findTag<IntTag>()) {
-                auto& intDataVector = tcpHeader->addTagIfAbsent<IntTag>()->getIntDataForUpdate();
+                auto intTag = getAttachedIntTagForUpdate(tcpHeader);
+                auto& intDataVector = intTag->getIntDataForUpdate();
                 if(!intDataVector.empty()) {
                     IntMetaData& intData = intDataVector.back();
                     intData.setAverageRtt(avgRtt.dbl());
@@ -258,16 +288,11 @@ Packet *IntQueue::pullPacket(cGate *gate)
                     intData.setEffectiveNumOfFlows(effectiveNumOfFlows);
                     intData.setNumOfFlowsInInitialPhase(numOfFlowsInInitialPhase);
                     intData.setHopId(getParentModule()->getParentModule()->getId());
-                    intData.setQLen(queue.getByteLength());
+                    const double bandwidthBytesPerSecond = getLinkBandwidthBytesPerSecond();
+                    intData.setQLen(txQueueBytes);
                     intData.setTs(simTime());
                     intData.setTxBytes(txBytes);
-                    auto *networkInterface = dynamic_cast<NetworkInterface*>(getParentModule());
-                    auto *rxTransmissionChannel = networkInterface ? networkInterface->getRxTransmissionChannel() : nullptr;
-                    if (rxTransmissionChannel != nullptr)
-                        intData.setB(rxTransmissionChannel->getNominalDatarate() / 8);
-                    else
-                        // Ground-station handovers can disconnect the gate before the queue is flushed.
-                        intData.setB(bandwidth / 8);
+                    intData.setB(static_cast<long>(bandwidthBytesPerSecond));
                 }
             }
         }

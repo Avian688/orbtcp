@@ -63,6 +63,7 @@ class PintQueue : public PacketQueue
     int pintMaxConcurrentFlows = 512;
 
     bool hasPintSample = false;
+    bool telemetryActivitySinceLastTimer = false;
     bool flowCountSketchEnabled = true;
     bool pintAutoScaleEncoding = false;
 
@@ -90,7 +91,7 @@ class PintQueue : public PacketQueue
     virtual int getTotalFlowCount() const;
     virtual int getInitialPhaseFlowCount() const;
 
-    virtual double updatePintUtilization(uint64_t packetBytes, uint64_t queueBytes,
+    virtual double updatePintUtilization(uint64_t payloadBytes, uint64_t queueBytes,
             double bandwidthBytesPerSecond);
     virtual uint16_t encodePintUtilization(double utilization);
     virtual double decodePintUtilization(uint16_t power) const;
