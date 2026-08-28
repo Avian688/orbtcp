@@ -651,16 +651,14 @@ TcpEventCode OrbtcpConnection::processSegment1stThru8th(Packet *tcpSegment, cons
 
         // tcpAlgorithm decides when and how to do ACKs
 
-        // Added In-Network Telemetry (INT). Data Packets received will transfer INT meta data to the ACKS to be sent to the sender.
-        auto intTag = tcpHeader->getTag<IntTag>();
-        //intTag->
-        //int intDataArraySize = intTag->getIntDataArraySize();
-        //for (int i = 0; i < intDataArraySize; i++) {
-//        if(simTime().dbl() > 16){
-//            std::cout << "\n RECEIVED SEGMENT AT RECEIVER. SEQ NO: " << tcpHeader->getSequenceNo() << endl;
-//        }
-        dynamic_cast<OrbtcpFamily*>(tcpAlgorithm)->receiveSeqChanged(intTag->getIntData());
-        //}
+        // Data segments return their telemetry in the ACK. Control-only
+        // segments such as a pure FIN have no IntTag and use a normal TCP ACK.
+        const auto intTag = tcpHeader->findTag<IntTag>();
+        if (intTag != nullptr)
+            dynamic_cast<OrbtcpFamily *>(tcpAlgorithm)->receiveSeqChanged(
+                    intTag->getIntData());
+        else
+            tcpAlgorithm->receiveSeqChanged();
     }
 
     if ((fsm.getState() == TCP_S_ESTABLISHED || fsm.getState() == TCP_S_SYN_RCVD) &&
