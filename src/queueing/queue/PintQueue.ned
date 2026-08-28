@@ -45,10 +45,15 @@ simple PintQueue extends PacketQueue
         @statistic[pintEncodedPower](record=vector; interpolationmode=sample-hold);
 
         packetCapacity @mutable = default(100);
+        // ScenarioManager writes this parameter after reconnecting a path.
+        // A negative value leaves the initial packetCapacity unchanged.
+        int runtimePacketCapacity @mutable = default(-1);
         double fallbackBandwidth @unit(bps) = default(100Mbps);
         double fixedAvgRTTVal @unit(s) = default(0s);
         double pintInitialRtt @unit(s) = default(10ms);
         double alpha = default(0.03);
+        // Disable only for the AvgRTT ablation, which uses each packet's sender RTT in U.
+        bool pintUseAverageRttForUtilization = default(true);
 
         // Set false for an exact per-interval flow set, matching base OrbCC.
         bool flowCountSketchEnabled = default(true);

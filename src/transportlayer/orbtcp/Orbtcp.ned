@@ -33,4 +33,6 @@ simple Orbtcp extends TcpPaced
         // These must match the PintQueue format; zero means an exact 16-bit count.
         int pintFlowCountBits = default(8);
         int pintMaxFlowCount = default(65535);
+        // Disable only for the initial-phase flow-count ablation.
+        bool pintUseInitialPhaseFlowCount = default(true);
 }

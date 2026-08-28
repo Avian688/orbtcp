@@ -42,6 +42,8 @@ void OrbtcpPintFlavour::initialize()
             conn->getTcpMain()->par("pintFlowCountBits").intValue();
     pintMaxFlowCount =
             conn->getTcpMain()->par("pintMaxFlowCount").intValue();
+    pintUseInitialPhaseFlowCount =
+            conn->getTcpMain()->par("pintUseInitialPhaseFlowCount").boolValue();
     if (pintFeedbackProbability < 0 || pintFeedbackProbability > 1)
         throw cRuntimeError("pintFeedbackProbability must be in the range [0, 1]");
     if (!pint::isValidFlowCountBits(pintFlowCountBits))
@@ -142,9 +144,11 @@ double OrbtcpPintFlavour::measureInflight(const IntDataVec& intData)
         return 0;
 
     state->sharingFlows = totalFlowCount;
-    state->initialPhaseSharingFlows = pint::decodeFlowCount(
+    const uint32_t initialPhaseFlowCount = pint::decodeFlowCount(
             pintData.getPintInitialFlowCountCode(), pintFlowCountBits,
             pintMaxFlowCount);
+    state->initialPhaseSharingFlows = pintUseInitialPhaseFlowCount ?
+            initialPhaseFlowCount : totalFlowCount;
     state->bottBW = static_cast<uint32_t>(bottleneckBandwidth);
     state->queueingDelay =
             pint::decodeQueueingDelay(pintData.getQueueingDelayCode());

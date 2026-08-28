@@ -24,6 +24,7 @@ class OrbtcpPintFlavour : public OrbtcpFlavour
     double pintFeedbackProbability = 1;
     int pintFlowCountBits = 8;
     int pintMaxFlowCount = 65535;
+    bool pintUseInitialPhaseFlowCount = true;
     uint32_t lastPathDigest = 0;
     bool hasPathDigest = false;
     simtime_t lastPintFeedback;

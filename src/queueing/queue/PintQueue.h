@@ -65,6 +65,7 @@ class PintQueue : public PacketQueue
     bool hasPintSample = false;
     bool telemetryActivitySinceLastTimer = false;
     bool flowCountSketchEnabled = true;
+    bool pintUseAverageRttForUtilization = true;
     bool pintAutoScaleEncoding = false;
 
     // Packets update the active banks while the previous epoch is measured.
@@ -77,6 +78,7 @@ class PintQueue : public PacketQueue
 
   protected:
     virtual void initialize(int stage) override;
+    virtual void handleParameterChange(const char *name) override;
     virtual void handleMessage(cMessage *message) override;
 
     virtual void processMeasurementTimer();
@@ -92,7 +94,7 @@ class PintQueue : public PacketQueue
     virtual int getInitialPhaseFlowCount() const;
 
     virtual double updatePintUtilization(uint64_t payloadBytes, uint64_t queueBytes,
-            double bandwidthBytesPerSecond);
+            double bandwidthBytesPerSecond, double flowRttSeconds);
     virtual uint16_t encodePintUtilization(double utilization);
     virtual double decodePintUtilization(uint16_t power) const;
     virtual double getPintUtilizationLogBase() const;

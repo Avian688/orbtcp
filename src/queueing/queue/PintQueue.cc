@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
 
 #include "inet/common/PacketEventTag.h"
@@ -66,6 +67,8 @@ void PintQueue::initialize(int stage)
     fixedAvgRtt = par("fixedAvgRTTVal");
     pintInitialRtt = par("pintInitialRtt");
     alpha = par("alpha");
+    pintUseAverageRttForUtilization =
+            par("pintUseAverageRttForUtilization");
     flowCountSketchEnabled = par("flowCountSketchEnabled");
     flowCardinalityBits = par("flowCardinalityBits");
     flowSketchSeed = static_cast<uint64_t>(par("flowSketchSeed").intValue());
@@ -116,6 +119,23 @@ void PintQueue::initialize(int stage)
 
     cSimpleModule::emit(bandwidthSignal, fallbackBandwidthBitsPerSecond);
     cSimpleModule::emit(avgRttSignal, avgRtt);
+}
+
+void PintQueue::handleParameterChange(const char *name)
+{
+    if (name == nullptr) {
+        packetCapacity = par("packetCapacity");
+        const int updatedPacketCapacity = par("runtimePacketCapacity");
+        if (updatedPacketCapacity >= 0)
+            packetCapacity = updatedPacketCapacity;
+    }
+    else if (!strcmp(name, "packetCapacity"))
+        packetCapacity = par("packetCapacity");
+    else if (!strcmp(name, "runtimePacketCapacity")) {
+        const int updatedPacketCapacity = par("runtimePacketCapacity");
+        if (updatedPacketCapacity >= 0)
+            packetCapacity = updatedPacketCapacity;
+    }
 }
 
 void PintQueue::handleMessage(cMessage *message)
@@ -248,10 +268,12 @@ int PintQueue::getInitialPhaseFlowCount() const
 }
 
 double PintQueue::updatePintUtilization(uint64_t payloadBytes, uint64_t queueBytes,
-        double bandwidthBytesPerSecond)
+        double bandwidthBytesPerSecond, double flowRttSeconds)
 {
-    const double rttSeconds = avgRtt > SIMTIME_ZERO ?
-            avgRtt.dbl() : pintInitialRtt.dbl();
+    const double rttSeconds =
+            !pintUseAverageRttForUtilization && flowRttSeconds > 0 ?
+            flowRttSeconds :
+            (avgRtt > SIMTIME_ZERO ? avgRtt.dbl() : pintInitialRtt.dbl());
     const double payloadServiceTime = payloadBytes / bandwidthBytesPerSecond;
     const double queueUtilization =
             queueBytes / (bandwidthBytesPerSecond * rttSeconds);
@@ -459,8 +481,16 @@ Packet *PintQueue::pullPacket(cGate *gate)
         const uint64_t tcpPayloadBytes = packet->getByteLength();
         double localUtilization = 0;
         if (tcpPayloadBytes > 0) {
+            double flowRttSeconds = 0;
+            if (!pintUseAverageRttForUtilization) {
+                const auto intTag = tcpHeader->findTag<IntTag>();
+                if (intTag != nullptr)
+                    flowRttSeconds = pint::decodeBaseRtt(
+                            intTag->getPintBaseRttCode());
+            }
             localUtilization = updatePintUtilization(
-                    tcpPayloadBytes, queueBytes, bandwidthBytesPerSecond);
+                    tcpPayloadBytes, queueBytes, bandwidthBytesPerSecond,
+                    flowRttSeconds);
             txBytes += tcpPayloadBytes;
             cSimpleModule::emit(txBytesSignal, txBytes);
             cSimpleModule::emit(pintLocalUtilizationSignal, localUtilization);
