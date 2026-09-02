@@ -24,6 +24,7 @@ class OrbtcpPintFlavour : public OrbtcpFlavour
     double pintFeedbackProbability = 1;
     int pintFlowCountBits = 8;
     int pintMaxFlowCount = 65535;
+    bool pintUseInitialPhase = true;
     bool pintUseInitialPhaseFlowCount = true;
     uint32_t lastPathDigest = 0;
     bool hasPathDigest = false;
@@ -43,6 +44,7 @@ class OrbtcpPintFlavour : public OrbtcpFlavour
     virtual void established(bool active) override;
     virtual uint32_t computeWnd(double u, bool updateWc) override;
     virtual double measureInflight(const IntDataVec& intData) override;
+    virtual bool getInitialPhase() override;
 };
 
 } // namespace tcp

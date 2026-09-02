@@ -42,6 +42,8 @@ void OrbtcpPintFlavour::initialize()
             conn->getTcpMain()->par("pintFlowCountBits").intValue();
     pintMaxFlowCount =
             conn->getTcpMain()->par("pintMaxFlowCount").intValue();
+    pintUseInitialPhase =
+            conn->getTcpMain()->par("pintUseInitialPhase").boolValue();
     pintUseInitialPhaseFlowCount =
             conn->getTcpMain()->par("pintUseInitialPhaseFlowCount").boolValue();
     if (pintFeedbackProbability < 0 || pintFeedbackProbability > 1)
@@ -55,6 +57,12 @@ void OrbtcpPintFlavour::initialize()
     lastPathDigest = 0;
     hasPathDigest = false;
     lastPintFeedback = SIMTIME_ZERO;
+
+    if (!pintUseInitialPhase) {
+        firstRTT = false;
+        state->initialPhase = false;
+        state->endInitialPhase = false;
+    }
 }
 
 void OrbtcpPintFlavour::established(bool active)
@@ -134,7 +142,7 @@ double OrbtcpPintFlavour::measureInflight(const IntDataVec& intData)
             state->srtt > SIMTIME_ZERO ? state->srtt : state->T;
     if (startupDelay <= SIMTIME_ZERO)
         startupDelay = SimTime(10, SIMTIME_MS);
-    if (!initReactTimer->isScheduled())
+    if (pintUseInitialPhase && !initReactTimer->isScheduled())
         conn->scheduleAt(simTime() + startupDelay, initReactTimer);
 
     const uint32_t totalFlowCount = pint::decodeFlowCount(
@@ -244,6 +252,11 @@ uint32_t OrbtcpPintFlavour::computeWnd(double u, bool updateWc)
     }
 
     return targetWnd;
+}
+
+bool OrbtcpPintFlavour::getInitialPhase()
+{
+    return pintUseInitialPhase && OrbtcpFlavour::getInitialPhase();
 }
 
 } // namespace tcp
