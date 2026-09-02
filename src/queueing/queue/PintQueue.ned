@@ -52,8 +52,10 @@ simple PintQueue extends PacketQueue
         double fixedAvgRTTVal @unit(s) = default(0s);
         double pintInitialRtt @unit(s) = default(10ms);
         double alpha = default(0.03);
-        // Disable only for the AvgRTT ablation, which uses each packet's sender RTT in U.
-        bool pintUseAverageRttForUtilization = default(true);
+        // Disable for the AvgRTT ablation. U then uses each packet's flow RTT,
+        // and flow-count epochs use pintNoAverageRttInterval.
+        bool pintUseAverageRtt = default(true);
+        double pintNoAverageRttInterval @unit(s) = default(20ms);
 
         // Set false for an exact per-interval flow set, matching base OrbCC.
         bool flowCountSketchEnabled = default(true);

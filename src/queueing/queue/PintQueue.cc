@@ -66,9 +66,9 @@ void PintQueue::initialize(int stage)
     fallbackBandwidthBitsPerSecond = par("fallbackBandwidth").doubleValue();
     fixedAvgRtt = par("fixedAvgRTTVal");
     pintInitialRtt = par("pintInitialRtt");
+    pintNoAverageRttInterval = par("pintNoAverageRttInterval");
     alpha = par("alpha");
-    pintUseAverageRttForUtilization =
-            par("pintUseAverageRttForUtilization");
+    pintUseAverageRtt = par("pintUseAverageRtt");
     flowCountSketchEnabled = par("flowCountSketchEnabled");
     flowCardinalityBits = par("flowCardinalityBits");
     flowSketchSeed = static_cast<uint64_t>(par("flowSketchSeed").intValue());
@@ -82,6 +82,8 @@ void PintQueue::initialize(int stage)
 
     if (pintInitialRtt <= SIMTIME_ZERO)
         throw cRuntimeError("pintInitialRtt must be positive");
+    if (pintNoAverageRttInterval <= SIMTIME_ZERO)
+        throw cRuntimeError("pintNoAverageRttInterval must be positive");
     if (alpha <= 0 || alpha > 1)
         throw cRuntimeError("PINT alpha must be in the range (0, 1]");
     if (fallbackBandwidthBitsPerSecond <= 0)
@@ -103,8 +105,11 @@ void PintQueue::initialize(int stage)
             pintMaxUtilization <= 1.0 / pintMaxConcurrentFlows)
         throw cRuntimeError("pintMaxUtilization must exceed 1 / pintMaxConcurrentFlows");
 
-    avgRtt = fixedAvgRtt > SIMTIME_ZERO ? fixedAvgRtt : pintInitialRtt;
-    measurementInterval = avgRtt;
+    avgRtt = pintUseAverageRtt ?
+            (fixedAvgRtt > SIMTIME_ZERO ? fixedAvgRtt : pintInitialRtt) :
+            SIMTIME_ZERO;
+    measurementInterval = pintUseAverageRtt ?
+            avgRtt : pintNoAverageRttInterval;
     lastPintUpdate = SIMTIME_ZERO;
 
     if (flowCountSketchEnabled) {
@@ -156,13 +161,15 @@ void PintQueue::processMeasurementTimer()
     telemetryActivitySinceLastTimer = false;
     const double bandwidthBytesPerSecond = getLinkBandwidthBytesPerSecond();
 
-    if (fixedAvgRtt > SIMTIME_ZERO)
-        avgRtt = fixedAvgRtt;
-    else if (sumRttByCwnd > 0 && sumRttSquareByCwnd > 0)
-        avgRtt = SimTime(sumRttSquareByCwnd / sumRttByCwnd);
+    if (pintUseAverageRtt) {
+        if (fixedAvgRtt > SIMTIME_ZERO)
+            avgRtt = fixedAvgRtt;
+        else if (sumRttByCwnd > 0 && sumRttSquareByCwnd > 0)
+            avgRtt = SimTime(sumRttSquareByCwnd / sumRttByCwnd);
 
-    if (avgRtt <= SIMTIME_ZERO)
-        avgRtt = pintInitialRtt;
+        if (avgRtt <= SIMTIME_ZERO)
+            avgRtt = pintInitialRtt;
+    }
 
     if (flowCountSketchEnabled) {
         rotateFlowCounterBitmaps();
@@ -194,7 +201,8 @@ void PintQueue::processMeasurementTimer()
     sumRttSquareByCwnd = 0;
     resetCompletedFlowCounters();
 
-    measurementInterval = avgRtt;
+    measurementInterval = pintUseAverageRtt ?
+            avgRtt : pintNoAverageRttInterval;
     scheduleMeasurementTimer();
 }
 
@@ -268,12 +276,12 @@ int PintQueue::getInitialPhaseFlowCount() const
 }
 
 double PintQueue::updatePintUtilization(uint64_t payloadBytes, uint64_t queueBytes,
-        double bandwidthBytesPerSecond, double flowRttSeconds)
+        double bandwidthBytesPerSecond, double flowRttSeconds, uint64_t flowId)
 {
-    const double rttSeconds =
-            !pintUseAverageRttForUtilization && flowRttSeconds > 0 ?
-            flowRttSeconds :
-            (avgRtt > SIMTIME_ZERO ? avgRtt.dbl() : pintInitialRtt.dbl());
+    const double rttSeconds = pintUseAverageRtt ?
+            (avgRtt > SIMTIME_ZERO ? avgRtt.dbl() : pintInitialRtt.dbl()) :
+            (flowRttSeconds > 0 ? flowRttSeconds :
+                    pintNoAverageRttInterval.dbl());
     const double payloadServiceTime = payloadBytes / bandwidthBytesPerSecond;
     const double queueUtilization =
             queueBytes / (bandwidthBytesPerSecond * rttSeconds);
@@ -281,8 +289,13 @@ double PintQueue::updatePintUtilization(uint64_t payloadBytes, uint64_t queueByt
     if (!hasPintSample) {
         lastPintUpdate = simTime();
         hasPintSample = true;
-        pintUtilization = queueUtilization;
-        return pintUtilization;
+        if (pintUseAverageRtt) {
+            pintUtilization = queueUtilization;
+            return pintUtilization;
+        }
+
+        perFlowPintUtilization[flowId] = queueUtilization;
+        return queueUtilization;
     }
 
     double tau = (simTime() - lastPintUpdate).dbl();
@@ -291,10 +304,16 @@ double PintQueue::updatePintUtilization(uint64_t payloadBytes, uint64_t queueByt
     const double sample = queueUtilization +
             payloadBytes / (bandwidthBytesPerSecond * tau);
     // Use OrbCC's fixed alpha rather than HPCC's time-derived tau / RTT weight.
-    pintUtilization = (1 - alpha) * pintUtilization + alpha * sample;
-
     lastPintUpdate = simTime();
-    return pintUtilization;
+    if (pintUseAverageRtt) {
+        pintUtilization = (1 - alpha) * pintUtilization + alpha * sample;
+        return pintUtilization;
+    }
+
+    auto [it, inserted] = perFlowPintUtilization.emplace(flowId, sample);
+    if (!inserted)
+        it->second = (1 - alpha) * it->second + alpha * sample;
+    return it->second;
 }
 
 uint16_t PintQueue::encodePintUtilization(double utilization)
@@ -394,15 +413,17 @@ void PintQueue::pushPacket(Packet *packet, cGate *gate)
             }
             const uint64_t flowId = static_cast<uint64_t>(intTag->getConnId());
 
-            const double baseRtt =
-                    pint::decodeBaseRtt(intTag->getPintBaseRttCode());
-            const uint64_t cwndBytes =
-                    pint::decodeCwnd(intTag->getPintCwndCode());
-            if (baseRtt > 0 && cwndBytes > 0) {
-                const double weight =
-                        static_cast<double>(tcpPayloadBytes) / cwndBytes;
-                sumRttByCwnd += baseRtt * weight;
-                sumRttSquareByCwnd += baseRtt * baseRtt * weight;
+            if (pintUseAverageRtt) {
+                const double baseRtt =
+                        pint::decodeBaseRtt(intTag->getPintBaseRttCode());
+                const uint64_t cwndBytes =
+                        pint::decodeCwnd(intTag->getPintCwndCode());
+                if (baseRtt > 0 && cwndBytes > 0) {
+                    const double weight =
+                            static_cast<double>(tcpPayloadBytes) / cwndBytes;
+                    sumRttByCwnd += baseRtt * weight;
+                    sumRttSquareByCwnd += baseRtt * baseRtt * weight;
+                }
             }
 
             if (flowCountSketchEnabled) {
@@ -482,15 +503,17 @@ Packet *PintQueue::pullPacket(cGate *gate)
         double localUtilization = 0;
         if (tcpPayloadBytes > 0) {
             double flowRttSeconds = 0;
-            if (!pintUseAverageRttForUtilization) {
+            uint64_t flowId = 0;
+            if (!pintUseAverageRtt) {
                 const auto intTag = tcpHeader->findTag<IntTag>();
-                if (intTag != nullptr)
-                    flowRttSeconds = pint::decodeBaseRtt(
-                            intTag->getPintBaseRttCode());
+                if (intTag != nullptr) {
+                    flowRttSeconds = intTag->getRtt().dbl();
+                    flowId = static_cast<uint64_t>(intTag->getConnId());
+                }
             }
             localUtilization = updatePintUtilization(
                     tcpPayloadBytes, queueBytes, bandwidthBytesPerSecond,
-                    flowRttSeconds);
+                    flowRttSeconds, flowId);
             txBytes += tcpPayloadBytes;
             cSimpleModule::emit(txBytesSignal, txBytes);
             cSimpleModule::emit(pintLocalUtilizationSignal, localUtilization);

@@ -1103,8 +1103,13 @@ uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
     intTag->setRtt(estimatedRtt);
     intTag->setCwnd(cwnd);
     if (orbAlgorithm->usesPintTelemetry()) {
-        intTag->setPintBaseRttCode(pint::encodeBaseRtt(estimatedRtt.dbl()));
-        intTag->setPintCwndCode(pint::encodeCwnd(cwnd));
+        // The AvgRTT ablation consumes the ordinary per-flow TCP RTT. The
+        // compact estimator inputs are populated only when AvgRTT is enabled.
+        intTag->setRtt(orbAlgorithm->getRtt());
+        if (tcpMain->par("pintUseAverageRtt").boolValue()) {
+            intTag->setPintBaseRttCode(pint::encodeBaseRtt(estimatedRtt.dbl()));
+            intTag->setPintCwndCode(pint::encodeCwnd(cwnd));
+        }
     }
     intTag->setInitialPhase(orbAlgorithm->getInitialPhase());
     intTag->setRetrans(rexmitQueue->isRetransmitted(state->snd_nxt));

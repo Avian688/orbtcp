@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <set>
+#include <unordered_map>
 #include <vector>
 
 #include "inet/queueing/queue/PacketQueue.h"
@@ -41,6 +42,7 @@ class PintQueue : public PacketQueue
     simtime_t measurementInterval;
     simtime_t fixedAvgRtt;
     simtime_t pintInitialRtt;
+    simtime_t pintNoAverageRttInterval;
     simtime_t lastPintUpdate;
 
     double fallbackBandwidthBitsPerSecond = 0;
@@ -65,7 +67,7 @@ class PintQueue : public PacketQueue
     bool hasPintSample = false;
     bool telemetryActivitySinceLastTimer = false;
     bool flowCountSketchEnabled = true;
-    bool pintUseAverageRttForUtilization = true;
+    bool pintUseAverageRtt = true;
     bool pintAutoScaleEncoding = false;
 
     // Packets update the active banks while the previous epoch is measured.
@@ -75,6 +77,7 @@ class PintQueue : public PacketQueue
     std::vector<uint64_t> initialPhaseMeasurementFlowBitmap;
     std::set<uint64_t> activeFlowIds;
     std::set<uint64_t> initialPhaseFlowIds;
+    std::unordered_map<uint64_t, double> perFlowPintUtilization;
 
   protected:
     virtual void initialize(int stage) override;
@@ -94,7 +97,8 @@ class PintQueue : public PacketQueue
     virtual int getInitialPhaseFlowCount() const;
 
     virtual double updatePintUtilization(uint64_t payloadBytes, uint64_t queueBytes,
-            double bandwidthBytesPerSecond, double flowRttSeconds);
+            double bandwidthBytesPerSecond, double flowRttSeconds,
+            uint64_t flowId);
     virtual uint16_t encodePintUtilization(double utilization);
     virtual double decodePintUtilization(uint16_t power) const;
     virtual double getPintUtilizationLogBase() const;
