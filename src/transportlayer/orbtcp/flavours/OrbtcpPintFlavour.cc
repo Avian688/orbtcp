@@ -202,9 +202,8 @@ double OrbtcpPintFlavour::measureInflight(const IntDataVec& intData)
                     startupRtt.dbl() * state->additiveIncreasePercent;
 
             state->ssthresh = clampWindow(fairWindow);
-            state->additiveIncrease = utilization >= state->eta ? 0 :
-                    clampWindow(std::min(remainingWindow,
-                            startupIncreaseBudget));
+            state->additiveIncrease = clampWindow(std::min(remainingWindow,
+                    startupIncreaseBudget));
         }
     }
 
@@ -224,13 +223,20 @@ uint32_t OrbtcpPintFlavour::computeWnd(double u, bool updateWc)
     // compound the per-RTT additive increase.
     const double committedWindow = state->prevWnd > 0 ?
             state->prevWnd : state->snd_cwnd;
-    double targetWindow = u >= state->eta ?
-            committedWindow / (u / state->eta) + state->additiveIncrease :
-            committedWindow + state->additiveIncrease;
-
-    if (state->initialPhase && state->ssthresh > 0)
-        targetWindow = std::min(targetWindow,
+    const bool inInitialPhase = state->initialPhase && state->ssthresh > 0;
+    double targetWindow;
+    if (inInitialPhase) {
+        // Established flows account for aggregate U while the newcomer advances
+        // by its share of the bounded startup budget toward the N-based cap.
+        targetWindow = std::min(
+                committedWindow + state->additiveIncrease,
                 static_cast<double>(state->ssthresh));
+    }
+    else {
+        targetWindow = u >= state->eta ?
+                committedWindow / (u / state->eta) + state->additiveIncrease :
+                committedWindow + state->additiveIncrease;
+    }
 
     uint32_t targetWnd = clampWindow(targetWindow);
     const bool cwndLimited = isCwndLimited();
@@ -240,9 +246,8 @@ uint32_t OrbtcpPintFlavour::computeWnd(double u, bool updateWc)
     if (updateWc) {
         updateWindow = false;
         state->prevWnd = targetWnd;
-        if (state->initialPhase &&
-                (u >= state->eta ||
-                (state->ssthresh > 0 && targetWnd >= state->ssthresh)))
+        if (state->initialPhase && state->ssthresh > 0 &&
+                targetWnd >= state->ssthresh)
             state->endInitialPhase = true;
         if (state->endInitialPhase) {
             state->initialPhase = false;
