@@ -9,7 +9,6 @@
 #define COMMON_PINTQUEUEINGDELAY_H_
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 
 namespace inet {
@@ -21,18 +20,21 @@ constexpr double QUEUEING_DELAY_UNIT_SECONDS = 64e-6;
 constexpr uint32_t QUEUEING_DELAY_MAX_CODE =
         (1U << QUEUEING_DELAY_BITS) - 1;
 
-inline uint32_t encodeQueueingDelay(double delaySeconds)
+constexpr uint32_t encodeQueueingDelay(double delaySeconds)
 {
     if (!(delaySeconds > 0))
         return 0;
 
-    const double units = std::round(delaySeconds / QUEUEING_DELAY_UNIT_SECONDS);
-    if (!std::isfinite(units) || units >= QUEUEING_DELAY_MAX_CODE)
+    const double units = delaySeconds / QUEUEING_DELAY_UNIT_SECONDS;
+    if (!(units < QUEUEING_DELAY_MAX_CODE))
         return QUEUEING_DELAY_MAX_CODE;
-    return static_cast<uint32_t>(units);
+    // Positive half-away-from-zero rounding, as with std::round, with the
+    // finite/range check before the integer conversion.
+    const uint32_t wholeUnits = static_cast<uint32_t>(units);
+    return wholeUnits + (units - wholeUnits >= 0.5 ? 1 : 0);
 }
 
-inline uint32_t accumulateQueueingDelay(uint32_t currentCode, double localDelaySeconds)
+constexpr uint32_t accumulateQueueingDelay(uint32_t currentCode, double localDelaySeconds)
 {
     currentCode = std::min(currentCode, QUEUEING_DELAY_MAX_CODE);
     const uint32_t localCode = encodeQueueingDelay(localDelaySeconds);
@@ -43,10 +45,31 @@ inline uint32_t accumulateQueueingDelay(uint32_t currentCode, double localDelayS
     return currentCode + localCode;
 }
 
-inline double decodeQueueingDelay(uint32_t code)
+constexpr double decodeQueueingDelay(uint32_t code)
 {
     return std::min(code, QUEUEING_DELAY_MAX_CODE) *
             QUEUEING_DELAY_UNIT_SECONDS;
+}
+
+// The CCA still needs the sum to remove queueing from its RTT measurement.
+// Keeping this in one place prevents split feedback from changing that meaning.
+template<typename Feedback>
+constexpr double decodeTotalQueueingDelay(const Feedback& feedback)
+{
+    return decodeQueueingDelay(feedback.getQueueingDelayCode()) +
+            (feedback.getSeparateQueueingDelay() ?
+                    decodeQueueingDelay(feedback.getReverseQueueingDelayCode()) : 0);
+}
+
+template<typename Feedback>
+constexpr void accumulatePacketQueueingDelay(Feedback& feedback, bool hasData, double delaySeconds)
+{
+    if (feedback.getSeparateQueueingDelay() && !hasData)
+        feedback.setReverseQueueingDelayCode(accumulateQueueingDelay(
+                feedback.getReverseQueueingDelayCode(), delaySeconds));
+    else
+        feedback.setQueueingDelayCode(accumulateQueueingDelay(
+                feedback.getQueueingDelayCode(), delaySeconds));
 }
 
 } // namespace pint

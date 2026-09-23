@@ -30,7 +30,9 @@ class IntMetaData extends cObject
 	int pintPower; // Configurable-width utilization code; zero in exact mode
 	double pintUtilization; // Decoded simulation value, not additional modeled wire overhead
 	unsigned int pathDigest; // 32-bit order-sensitive OrbCC path fingerprint
-	unsigned int queueingDelayCode; // 12-bit cumulative fixed-point queue residence time
+	unsigned int queueingDelayCode; // 12-bit forward queue residence; legacy ACKs accumulate both directions here
+	unsigned int reverseQueueingDelayCode; // Additional 12-bit accumulator, present on split-delay MpORB ACKs only
+	bool separateQueueingDelay = false; // Simulator format discriminator, not another modeled wire field
 	unsigned int pintTotalFlowCountCode; // Configurable-width N, present in every PINT record
 	unsigned int pintInitialFlowCountCode; // Optional configurable-width S during startup
 }

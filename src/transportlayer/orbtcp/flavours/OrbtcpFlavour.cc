@@ -532,6 +532,10 @@ uint32_t OrbtcpFlavour::computeWnd(double u, bool updateWc)
 
     const bool cwndLimited = isCwndLimited();
     targetW = limitCwndGrowth(targetW, cwndLimited);
+    // Match TcpPacedFamily::sendData's one-MSS floor before recording,
+    // committing prevWnd or calculating pacing. The growth gate must not
+    // preserve an old sub-MSS value that the sender would raise afterward.
+    targetW = std::max(targetW, state->snd_mss);
     conn->emit(cwndLimitedSignal, cwndLimited);
 
     if(updateWc) {

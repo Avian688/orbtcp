@@ -524,11 +524,12 @@ Packet *PintQueue::pullPacket(cGate *gate)
             auto& intDataVector = intTag->getIntDataForUpdate();
             if (!intDataVector.empty()) {
                 IntMetaData& intData = intDataVector.front();
-                intData.setQueueingDelayCode(pint::accumulateQueueingDelay(
-                        intData.getQueueingDelayCode(), queueingTime.dbl()));
+                pint::accumulatePacketQueueingDelay(intData, tcpPayloadBytes > 0,
+                        queueingTime.dbl());
 
-                // ACKs add their reverse-path queue residence without replacing
-                // the forward-path bottleneck record echoed by the receiver.
+                // Split-delay MpORB ACKs preserve the forward accumulator;
+                // legacy ACKs still sum both directions in the original field.
+                // Neither ACK format replaces the forward bottleneck record.
                 if (tcpPayloadBytes > 0) {
                     const int hopId = getParentModule()->getParentModule()->getId();
                     const uint16_t power = encodePintUtilization(localUtilization);

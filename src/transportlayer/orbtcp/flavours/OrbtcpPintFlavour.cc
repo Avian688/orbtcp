@@ -80,7 +80,7 @@ void OrbtcpPintFlavour::updateRttTelemetry(const IntDataVec& intData)
     }
 
     state->queueingDelay =
-            pint::decodeQueueingDelay(intData.front().getQueueingDelayCode());
+            pint::decodeTotalQueueingDelay(intData.front());
     conn->emit(queueingDelaySignal, state->queueingDelay);
 }
 
@@ -159,7 +159,7 @@ double OrbtcpPintFlavour::measureInflight(const IntDataVec& intData)
             initialPhaseFlowCount : totalFlowCount;
     state->bottBW = static_cast<uint32_t>(bottleneckBandwidth);
     state->queueingDelay =
-            pint::decodeQueueingDelay(pintData.getQueueingDelayCode());
+            pint::decodeTotalQueueingDelay(pintData);
     state->txRate = utilization * bottleneckBandwidth;
     state->u = utilization;
     state->alpha = 1;
@@ -241,6 +241,10 @@ uint32_t OrbtcpPintFlavour::computeWnd(double u, bool updateWc)
     uint32_t targetWnd = clampWindow(targetWindow);
     const bool cwndLimited = isCwndLimited();
     targetWnd = limitCwndGrowth(targetWnd, cwndLimited);
+    // Match TcpPacedFamily::sendData's one-MSS floor before recording,
+    // committing prevWnd or calculating pacing. The growth gate must not
+    // preserve an old sub-MSS value that the sender would raise afterward.
+    targetWnd = std::max(targetWnd, state->snd_mss);
     conn->emit(cwndLimitedSignal, cwndLimited);
 
     if (updateWc) {
