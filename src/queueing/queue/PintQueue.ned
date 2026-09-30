@@ -51,9 +51,11 @@ simple PintQueue extends PacketQueue
         double fallbackBandwidth @unit(bps) = default(100Mbps);
         double fixedAvgRTTVal @unit(s) = default(0s);
         double pintInitialRtt @unit(s) = default(10ms);
+        // Legacy INI compatibility only. U now uses min(1, elapsed / reference RTT).
         double alpha = default(0.03);
+        // With AvgRTT enabled, reference RTT is avgRtt (pintInitialRtt until valid).
         // Disable for the AvgRTT ablation. U then uses each packet's flow RTT,
-        // and flow-count epochs use pintNoAverageRttInterval.
+        // with a per-flow EWMA clock; flow-count epochs use pintNoAverageRttInterval.
         bool pintUseAverageRtt = default(true);
         double pintNoAverageRttInterval @unit(s) = default(20ms);
 

@@ -49,7 +49,6 @@ class PintQueue : public PacketQueue
     double sumRttByCwnd = 0;
     double sumRttSquareByCwnd = 0;
     double pintUtilization = 0;
-    double alpha = 0.03;
     double pintLogBase = 0;
     double pintMaxUtilization = 4;
 
@@ -77,7 +76,11 @@ class PintQueue : public PacketQueue
     std::vector<uint64_t> initialPhaseMeasurementFlowBitmap;
     std::set<uint64_t> activeFlowIds;
     std::set<uint64_t> initialPhaseFlowIds;
-    std::unordered_map<uint64_t, double> perFlowPintUtilization;
+    struct FlowUtilization {
+        double value = 0;
+        simtime_t updatedAt = SIMTIME_ZERO;
+    };
+    std::unordered_map<uint64_t, FlowUtilization> perFlowPintUtilization;
 
   protected:
     virtual void initialize(int stage) override;

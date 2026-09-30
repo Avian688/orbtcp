@@ -67,7 +67,6 @@ void PintQueue::initialize(int stage)
     fixedAvgRtt = par("fixedAvgRTTVal");
     pintInitialRtt = par("pintInitialRtt");
     pintNoAverageRttInterval = par("pintNoAverageRttInterval");
-    alpha = par("alpha");
     pintUseAverageRtt = par("pintUseAverageRtt");
     flowCountSketchEnabled = par("flowCountSketchEnabled");
     flowCardinalityBits = par("flowCardinalityBits");
@@ -84,8 +83,6 @@ void PintQueue::initialize(int stage)
         throw cRuntimeError("pintInitialRtt must be positive");
     if (pintNoAverageRttInterval <= SIMTIME_ZERO)
         throw cRuntimeError("pintNoAverageRttInterval must be positive");
-    if (alpha <= 0 || alpha > 1)
-        throw cRuntimeError("PINT alpha must be in the range (0, 1]");
     if (fallbackBandwidthBitsPerSecond <= 0)
         throw cRuntimeError("fallbackBandwidth must be positive");
     if (flowCountSketchEnabled && flowCardinalityBits <= 0)
@@ -294,7 +291,7 @@ double PintQueue::updatePintUtilization(uint64_t payloadBytes, uint64_t queueByt
             return pintUtilization;
         }
 
-        perFlowPintUtilization[flowId] = queueUtilization;
+        perFlowPintUtilization[flowId] = {queueUtilization, simTime()};
         return queueUtilization;
     }
 
@@ -303,17 +300,26 @@ double PintQueue::updatePintUtilization(uint64_t payloadBytes, uint64_t queueByt
 
     const double sample = queueUtilization +
             payloadBytes / (bandwidthBytesPerSecond * tau);
-    // Use OrbCC's fixed alpha rather than HPCC's time-derived tau / RTT weight.
+    // Keep the full interval in the rate sample, including after idle periods.
+    // Only the EWMA weight is capped: the reference RTT is its time scale.
     lastPintUpdate = simTime();
     if (pintUseAverageRtt) {
-        pintUtilization = (1 - alpha) * pintUtilization + alpha * sample;
+        const double gain = std::clamp(tau / rttSeconds, 0.0, 1.0);
+        pintUtilization = (1 - gain) * pintUtilization + gain * sample;
         return pintUtilization;
     }
 
-    auto [it, inserted] = perFlowPintUtilization.emplace(flowId, sample);
-    if (!inserted)
-        it->second = (1 - alpha) * it->second + alpha * sample;
-    return it->second;
+    auto [it, inserted] = perFlowPintUtilization.emplace(
+            flowId, FlowUtilization{sample, simTime()});
+    if (!inserted) {
+        // This EWMA advances only on this flow's packets; use its own elapsed
+        // time for smoothing, while the sample above still measures the link.
+        const double flowTau = std::max((simTime() - it->second.updatedAt).dbl(), payloadServiceTime);
+        const double gain = std::clamp(flowTau / rttSeconds, 0.0, 1.0);
+        it->second.value = (1 - gain) * it->second.value + gain * sample;
+        it->second.updatedAt = simTime();
+    }
+    return it->second.value;
 }
 
 uint16_t PintQueue::encodePintUtilization(double utilization)
