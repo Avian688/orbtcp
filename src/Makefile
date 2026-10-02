@@ -27,6 +27,7 @@ O = $(PROJECT_OUTPUT_DIR)/$(CONFIGNAME)/$(PROJECTRELATIVE_PATH)
 
 # Object files for local .cc, .msg and .sm files
 OBJS = \
+    $O/common/OmegaPriceTag.o \
     $O/networklayer/configurator/ipv4/Ipv4NetworkConfiguratorUpdate.o \
     $O/queueing/queue/IntQueue.o \
     $O/queueing/queue/PintQueue.o \

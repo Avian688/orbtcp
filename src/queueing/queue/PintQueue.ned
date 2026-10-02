@@ -59,6 +59,20 @@ simple PintQueue extends PacketQueue
         bool pintUseAverageRtt = default(true);
         double pintNoAverageRttInterval @unit(s) = default(20ms);
 
+        // Omega adds constant-size aggregate price state. Existing CCs opt out.
+        bool omegaPriceEnabled = default(false);
+        double omegaPriceInterval @unit(s) = default(5ms);
+        double omegaPriceMinRtt @unit(s) = default(20ms);
+        double omegaPriceTarget = default(0.95);
+        double omegaPriceIntegralGain = default(0.2);
+        double omegaPriceProportionalGain = default(1);
+        @signal[omegaLinkPrice](type=double);
+        @signal[omegaPriceMemory](type=double);
+        @signal[omegaOfferedLoad](type=double);
+        @statistic[omegaLinkPrice](record=vector; interpolationmode=sample-hold);
+        @statistic[omegaPriceMemory](record=vector; interpolationmode=sample-hold);
+        @statistic[omegaOfferedLoad](record=vector; interpolationmode=sample-hold);
+
         // Set false for an exact per-interval flow set, matching base OrbCC.
         bool flowCountSketchEnabled = default(true);
         // N and S each use active and completed-epoch bitmap banks.

@@ -19,6 +19,7 @@
 #include "inet/transportlayer/tcp_common/TcpHeader_m.h"
 
 #include "../../common/IntTag_m.h"
+#include "../../common/OmegaPriceTag.h"
 #include "../../common/PintFlowCount.h"
 #include "../../common/PintQueueingDelay.h"
 #include "../../common/PintSenderTelemetry.h"
@@ -49,6 +50,8 @@ simsignal_t PintQueue::pintEncodedPowerSignal = cComponent::registerSignal("pint
 
 PintQueue::~PintQueue()
 {
+    if (priceTimer != nullptr)
+        cancelAndDelete(priceTimer);
     if (measurementTimer != nullptr) {
         if (measurementTimer->isScheduled())
             cancelEvent(measurementTimer);
@@ -119,6 +122,22 @@ void PintQueue::initialize(int stage)
 
     measurementTimer = new cMessage("PINT measurement timer");
 
+    if (par("omegaPriceEnabled").boolValue()) {
+        priceInterval = par("omegaPriceInterval");
+        priceMinRtt = par("omegaPriceMinRtt").doubleValue();
+        priceTarget = par("omegaPriceTarget");
+        priceIntegralGain = par("omegaPriceIntegralGain");
+        priceProportionalGain = par("omegaPriceProportionalGain");
+        if (priceInterval <= SIMTIME_ZERO || !std::isfinite(priceMinRtt) ||
+                priceMinRtt < priceInterval.dbl() || !std::isfinite(priceTarget) ||
+                priceTarget <= 0 || priceTarget >= 1 ||
+                !std::isfinite(priceIntegralGain) || priceIntegralGain <= 0 ||
+                !std::isfinite(priceProportionalGain) || priceProportionalGain < 0)
+            throw cRuntimeError("Invalid Omega queue price parameters");
+        priceTimer = new cMessage("Omega aggregate price timer");
+        scheduleAt(simTime() + priceInterval, priceTimer);
+    }
+
     cSimpleModule::emit(bandwidthSignal, fallbackBandwidthBitsPerSecond);
     cSimpleModule::emit(avgRttSignal, avgRtt);
 }
@@ -142,7 +161,23 @@ void PintQueue::handleParameterChange(const char *name)
 
 void PintQueue::handleMessage(cMessage *message)
 {
-    if (message == measurementTimer)
+    if (message == priceTimer) {
+        const double capacity = getLinkBandwidthBytesPerSecond();
+        const double offeredRate = priceOfferedBytes / priceInterval.dbl();
+        linkPrice.update(offeredRate, capacity, queue.getByteLength(),
+                priceInterval.dbl(), std::max(priceMinRtt, avgRtt.dbl()),
+                priceTarget, priceIntegralGain, priceProportionalGain);
+        priceOfferedBytes = 0;
+        static const simsignal_t priceSignal = registerSignal("omegaLinkPrice");
+        static const simsignal_t memorySignal = registerSignal("omegaPriceMemory");
+        static const simsignal_t loadSignal = registerSignal("omegaOfferedLoad");
+        cSimpleModule::emit(priceSignal, linkPrice.advertised);
+        cSimpleModule::emit(memorySignal, linkPrice.memory);
+        cSimpleModule::emit(loadSignal, offeredRate / capacity);
+        // Keep ticking when idle: unused links must lose their old price.
+        scheduleAt(simTime() + priceInterval, priceTimer);
+    }
+    else if (message == measurementTimer)
         processMeasurementTimer();
     else {
         auto packet = check_and_cast<Packet *>(message);
@@ -412,6 +447,10 @@ void PintQueue::pushPacket(Packet *packet, cGate *gate)
         auto tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
         const uint64_t tcpPayloadBytes = packet->getByteLength();
         if (tcpPayloadBytes > 0) {
+            // Count arrivals before drop/admission, including retransmissions.
+            // Counting departures would hide overload behind the link capacity.
+            if (priceTimer != nullptr)
+                priceOfferedBytes += tcpPayloadBytes;
             auto intTag = getAttachedIntTagForUpdate(tcpHeader);
             if (!telemetryActivitySinceLastTimer) {
                 telemetryActivitySinceLastTimer = true;
@@ -507,6 +546,22 @@ Packet *PintQueue::pullPacket(cGate *gate)
         auto tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
         const uint64_t tcpPayloadBytes = packet->getByteLength();
         double localUtilization = 0;
+        if (tcpPayloadBytes > 0 && tcpHeader->findTag<OmegaPriceTag>()) {
+            tcpHeader->addTagIfAbsent<OmegaPriceTag>(); // Detach COW region tags.
+            auto price = tcpHeader->addTagIfAbsent<OmegaPriceTag>();
+            if (!price->echoed) {
+                if (price->hops == 0) {
+                    price->sampledAt = simTime();
+                    price->capacity = bandwidthBytesPerSecond;
+                }
+                price->hops++;
+                price->capacity = std::min(price->capacity, bandwidthBytesPerSecond);
+                if (priceTimer != nullptr) {
+                    price->pricedHops++;
+                    price->price += linkPrice.advertised;
+                }
+            }
+        }
         if (tcpPayloadBytes > 0) {
             double flowRttSeconds = 0;
             uint64_t flowId = 0;
