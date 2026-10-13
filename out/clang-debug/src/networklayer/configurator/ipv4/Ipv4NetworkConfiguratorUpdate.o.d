@@ -1,10 +1,11 @@
 ../out/clang-debug/src/networklayer/configurator/ipv4/Ipv4NetworkConfiguratorUpdate.o: \
+  /Library/Developer/CommandLineTools/SDKs/MacOSX27.sdk/SDKSettings.json \
   networklayer/configurator/ipv4/Ipv4NetworkConfiguratorUpdate.cc \
   ../../inet4.5/src/inet/common/INETUtils.h \
   ../../inet4.5/src/inet/common/INETDefs.h \
   ../../inet4.5/src/inet/common/precompiled_debug.h \
   ../../inet4.5/src/inet/common/precompiled.h \
-  /Users/av288/omnetpp-6.3.0/include/omnetpp.h \
+  /Users/av288/omnetpp-6.4.0/include/omnetpp.h \
   ../../inet4.5/src/inet/opp_defines.h ../../inet4.5/src/inet/features.h \
   ../../inet4.5/src/inet/common/Compat.h \
   ../../inet4.5/src/inet/common/InitStages.h \
@@ -77,11 +78,12 @@
   ../../inet4.5/src/inet/networklayer/configurator/base/L3NetworkConfiguratorBase.h \
   ../../inet4.5/src/inet/common/PatternMatcher.h \
   ../../inet4.5/src/inet/networklayer/ipv4/Ipv4InterfaceData.h
+/Library/Developer/CommandLineTools/SDKs/MacOSX27.sdk/SDKSettings.json:
 ../../inet4.5/src/inet/common/INETUtils.h:
 ../../inet4.5/src/inet/common/INETDefs.h:
 ../../inet4.5/src/inet/common/precompiled_debug.h:
 ../../inet4.5/src/inet/common/precompiled.h:
-/Users/av288/omnetpp-6.3.0/include/omnetpp.h:
+/Users/av288/omnetpp-6.4.0/include/omnetpp.h:
 ../../inet4.5/src/inet/opp_defines.h:
 ../../inet4.5/src/inet/features.h:
 ../../inet4.5/src/inet/common/Compat.h:

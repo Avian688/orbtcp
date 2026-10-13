@@ -1,8 +1,9 @@
 ../out/clang-debug/src/transportlayer/orbtcp/flavours/OrbtcpFamily.o: \
+  /Library/Developer/CommandLineTools/SDKs/MacOSX27.sdk/SDKSettings.json \
   transportlayer/orbtcp/flavours/OrbtcpFamily.cc \
   transportlayer/orbtcp/flavours/OrbtcpFamily.h \
   transportlayer/orbtcp/flavours/../../orbtcp/flavours/OrbtcpFamilyState_m.h \
-  /Users/av288/omnetpp-6.3.0/include/omnetpp.h \
+  /Users/av288/omnetpp-6.4.0/include/omnetpp.h \
   ../../inet4.5/src/inet/common/INETDefs_m.h \
   ../../inet4.5/src/inet/common/INETDefs.h \
   ../../inet4.5/src/inet/common/precompiled_debug.h \
@@ -105,9 +106,10 @@
   transportlayer/orbtcp/flavours/../../../../../tcpPaced/src/transportlayer/tcp/flavours/../TcpPacedConnection.h \
   ../../inet4.5/src/inet/transportlayer/tcp/flavours/TcpTahoeRenoFamily.h \
   ../../inet4.5/src/inet/transportlayer/tcp/flavours/TcpBaseAlg.h
+/Library/Developer/CommandLineTools/SDKs/MacOSX27.sdk/SDKSettings.json:
 transportlayer/orbtcp/flavours/OrbtcpFamily.h:
 transportlayer/orbtcp/flavours/../../orbtcp/flavours/OrbtcpFamilyState_m.h:
-/Users/av288/omnetpp-6.3.0/include/omnetpp.h:
+/Users/av288/omnetpp-6.4.0/include/omnetpp.h:
 ../../inet4.5/src/inet/common/INETDefs_m.h:
 ../../inet4.5/src/inet/common/INETDefs.h:
 ../../inet4.5/src/inet/common/precompiled_debug.h:

@@ -1,5 +1,7 @@
-../out/clang-debug/src/common/IntTag_m.o: common/IntTag_m.cc \
-  common/IntTag_m.h /Users/av288/omnetpp-6.3.0/include/omnetpp.h \
+../out/clang-debug/src/common/IntTag_m.o: \
+  /Library/Developer/CommandLineTools/SDKs/MacOSX27.sdk/SDKSettings.json \
+  common/IntTag_m.cc common/IntTag_m.h \
+  /Users/av288/omnetpp-6.4.0/include/omnetpp.h \
   ../../inet4.5/src/inet/common/INETDefs_m.h \
   ../../inet4.5/src/inet/common/INETDefs.h \
   ../../inet4.5/src/inet/common/precompiled_debug.h \
@@ -16,8 +18,9 @@
   ../../inet4.5/src/inet/common/Units.h \
   ../../inet4.5/src/inet/common/INETMath.h \
   ../../inet4.5/src/inet/common/Units_m.h
+/Library/Developer/CommandLineTools/SDKs/MacOSX27.sdk/SDKSettings.json:
 common/IntTag_m.h:
-/Users/av288/omnetpp-6.3.0/include/omnetpp.h:
+/Users/av288/omnetpp-6.4.0/include/omnetpp.h:
 ../../inet4.5/src/inet/common/INETDefs_m.h:
 ../../inet4.5/src/inet/common/INETDefs.h:
 ../../inet4.5/src/inet/common/precompiled_debug.h:

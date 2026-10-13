@@ -15,6 +15,7 @@
 
 #include "inet/queueing/queue/PacketQueue.h"
 #include "../../common/OmegaPrice.h"
+#include "../../common/DeltaShuffle.h"
 
 namespace inet {
 namespace queueing {
@@ -37,6 +38,12 @@ class PintQueue : public PacketQueue
     static simsignal_t pintDecodedUtilizationSignal;
     static simsignal_t pintEncodedPowerSignal;
 
+    delta::LinkShuffle deltaShuffle;
+    cMessage *deltaShuffleTimer = nullptr;
+    simtime_t deltaInterval; // Frozen for the current shuffle round.
+    simtime_t deltaIntervalOverride; // 0 selects the queue's average RTT.
+    void startDeltaShuffleRound();
+    double deltaShuffleFraction = 0, deltaRateFloor = 0, deltaNeedGain = 0;
     cMessage *measurementTimer = nullptr;
     cMessage *priceTimer = nullptr;
     omega::LinkPrice linkPrice;
