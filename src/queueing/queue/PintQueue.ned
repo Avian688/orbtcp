@@ -12,6 +12,8 @@ import inet.queueing.queue.PacketQueue;
 simple PintQueue extends PacketQueue
 {
     parameters:
+        @signal[mpOrbDeltaNeedCoefficient](type=double);
+        @statistic[mpOrbDeltaNeedCoefficient](title="Previous interval fairness normalisation coefficient"; source=mpOrbDeltaNeedCoefficient; record=vector; interpolationmode=none);
         @signal[mpOrbDeltaSubflowRate](type=double; unit=bps);
         @statistic[mpOrbDeltaSubflowRate](record=vector; unit=bps; interpolationmode=sample-hold);
         @signal[mpOrbDeltaConnectionRate](type=double; unit=bps);
@@ -81,23 +83,10 @@ simple PintQueue extends PacketQueue
         double deltaShuffleInterval @unit(s) = default(0s);
         @signal[mpOrbDeltaRoundInterval](type=simtime_t; unit=s);
         @statistic[mpOrbDeltaRoundInterval](record=vector; unit=s; interpolationmode=sample-hold);
-        double deltaShuffleFraction = default(0.05); // Sum of absolute rate shuffles <= fraction * B per round
-        double deltaNeedGain = default(2); // Response near equal rates; does not increase the shuffle cap
+        double deltaShuffleFraction = default(0.05); // Legacy Delta: hard round budget; SenderDelta: coefficient scale only
+        double deltaNeedGain = default(2); // Common need-range normalisation gain
         double deltaRateFloor @unit(bps) = default(8kbps); // Inverse-weight regularisation
 
-        // Omega adds constant-size aggregate price state. Existing CCs opt out.
-        bool omegaPriceEnabled = default(false);
-        double omegaPriceInterval @unit(s) = default(5ms);
-        double omegaPriceMinRtt @unit(s) = default(20ms);
-        double omegaPriceTarget = default(0.95);
-        double omegaPriceIntegralGain = default(0.2);
-        double omegaPriceProportionalGain = default(1);
-        @signal[omegaLinkPrice](type=double);
-        @signal[omegaPriceMemory](type=double);
-        @signal[omegaOfferedLoad](type=double);
-        @statistic[omegaLinkPrice](record=vector; interpolationmode=sample-hold);
-        @statistic[omegaPriceMemory](record=vector; interpolationmode=sample-hold);
-        @statistic[omegaOfferedLoad](record=vector; interpolationmode=sample-hold);
 
         // Set false for an exact per-interval flow set, matching base OrbCC.
         bool flowCountSketchEnabled = default(true);

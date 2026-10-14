@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 namespace inet { namespace delta {
+struct NeedFeedback { double meanNeed = 0, coefficient = 0; };
 struct Shuffle { double meanNeed = 0, raw = 0, returned = 0; };
 // Only aggregate link counters. Rates/budget/shuffle: payload bytes/s.
 // Packet mass L/(x * roundDuration): dimensionless. Need 1/X: seconds/byte.
@@ -25,12 +26,29 @@ struct LinkShuffle {
         }
     }
 
-    constexpr Shuffle issue(int64_t nextEpoch, double budget, double packetMass, double need, double gain = 8) {
+    // Measurement-only mode: retain exactly the same population estimator,
+    // but leave all signed correction and budget decisions to the sender.
+    constexpr NeedFeedback measure(int64_t nextEpoch, double budget,
+            double packetMass, double need, double gain = 8) {
         beginRound(nextEpoch);
         minNeed = mass > 0 ? std::min(minNeed, need) : need;
         maxNeed = mass > 0 ? std::max(maxNeed, need) : need;
         mass += packetMass;
         needMass += packetMass * need;
+        const double scale = gain > 0 ? std::max(2 * previousMean / gain, previousRange) : 0;
+        const double coefficient = previousMass > 0 && scale > 0 ?
+                budget / (previousMass * scale) : 0;
+        return {previousMean, coefficient};
+    }
+
+    constexpr Shuffle issue(int64_t nextEpoch, double budget, double packetMass, double need, double gain = 8, bool selected = true) {
+        beginRound(nextEpoch);
+        minNeed = mass > 0 ? std::min(minNeed, need) : need;
+        maxNeed = mass > 0 ? std::max(maxNeed, need) : need;
+        mass += packetMass;
+        needMass += packetMass * need;
+        if (!selected)
+            return {previousMean, 0, 0};
         // Increase sensitivity to modest connection-rate gaps, without raising
         // the link budget. A common range-based scale preserves both signs:
         // for a stable population, sum(mass * abs(need-mean)) <= M * range.

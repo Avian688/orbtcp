@@ -19,7 +19,6 @@
 #include "inet/transportlayer/tcp_common/TcpHeader_m.h"
 
 #include "../../common/IntTag_m.h"
-#include "../../common/OmegaPriceTag.h"
 #include "../../common/DeltaShuffleTag.h"
 
 #include "../../common/PintFlowCount.h"
@@ -56,8 +55,6 @@ PintQueue::~PintQueue()
 {
     if (deltaShuffleTimer != nullptr)
         cancelAndDelete(deltaShuffleTimer);
-    if (priceTimer != nullptr)
-        cancelAndDelete(priceTimer);
     if (measurementTimer != nullptr) {
         if (measurementTimer->isScheduled())
             cancelEvent(measurementTimer);
@@ -140,21 +137,7 @@ void PintQueue::initialize(int stage)
 
     measurementTimer = new cMessage("PINT measurement timer");
 
-    if (par("omegaPriceEnabled").boolValue()) {
-        priceInterval = par("omegaPriceInterval");
-        priceMinRtt = par("omegaPriceMinRtt").doubleValue();
-        priceTarget = par("omegaPriceTarget");
-        priceIntegralGain = par("omegaPriceIntegralGain");
-        priceProportionalGain = par("omegaPriceProportionalGain");
-        if (priceInterval <= SIMTIME_ZERO || !std::isfinite(priceMinRtt) ||
-                priceMinRtt < priceInterval.dbl() || !std::isfinite(priceTarget) ||
-                priceTarget <= 0 || priceTarget >= 1 ||
-                !std::isfinite(priceIntegralGain) || priceIntegralGain <= 0 ||
-                !std::isfinite(priceProportionalGain) || priceProportionalGain < 0)
-            throw cRuntimeError("Invalid Omega queue price parameters");
-        priceTimer = new cMessage("Omega aggregate price timer");
-        scheduleAt(simTime() + priceInterval, priceTimer);
-    }
+
 
     cSimpleModule::emit(bandwidthSignal, fallbackBandwidthBitsPerSecond);
     cSimpleModule::emit(avgRttSignal, avgRtt);
@@ -200,22 +183,7 @@ void PintQueue::handleMessage(cMessage *message)
             // The next Delta data packet starts a fresh observation round.
             deltaShuffle.beginRound(deltaShuffle.epoch + 1);
     }
-    else if (message == priceTimer) {
-        const double capacity = getLinkBandwidthBytesPerSecond();
-        const double offeredRate = priceOfferedBytes / priceInterval.dbl();
-        linkPrice.update(offeredRate, capacity, queue.getByteLength(),
-                priceInterval.dbl(), std::max(priceMinRtt, avgRtt.dbl()),
-                priceTarget, priceIntegralGain, priceProportionalGain);
-        priceOfferedBytes = 0;
-        static const simsignal_t priceSignal = registerSignal("omegaLinkPrice");
-        static const simsignal_t memorySignal = registerSignal("omegaPriceMemory");
-        static const simsignal_t loadSignal = registerSignal("omegaOfferedLoad");
-        cSimpleModule::emit(priceSignal, linkPrice.advertised);
-        cSimpleModule::emit(memorySignal, linkPrice.memory);
-        cSimpleModule::emit(loadSignal, offeredRate / capacity);
-        // Keep ticking when idle: unused links must lose their old price.
-        scheduleAt(simTime() + priceInterval, priceTimer);
-    }
+
     else if (message == measurementTimer)
         processMeasurementTimer();
     else {
@@ -486,10 +454,6 @@ void PintQueue::pushPacket(Packet *packet, cGate *gate)
         auto tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
         const uint64_t tcpPayloadBytes = packet->getByteLength();
         if (tcpPayloadBytes > 0) {
-            // Count arrivals before drop/admission, including retransmissions.
-            // Counting departures would hide overload behind the link capacity.
-            if (priceTimer != nullptr)
-                priceOfferedBytes += tcpPayloadBytes;
             auto intTag = getAttachedIntTagForUpdate(tcpHeader);
             if (!telemetryActivitySinceLastTimer) {
                 telemetryActivitySinceLastTimer = true;
@@ -585,62 +549,9 @@ Packet *PintQueue::pullPacket(cGate *gate)
         auto tcpHeader = packet->removeAtFront<tcp::TcpHeader>();
         const uint64_t tcpPayloadBytes = packet->getByteLength();
         double localUtilization = 0;
-        if (tcpPayloadBytes > 0 && tcpHeader->findTag<DeltaShuffleTag>()) {
-            tcpHeader->addTagIfAbsent<DeltaShuffleTag>(); // Detach COW region tags.
-            auto tag = tcpHeader->addTagIfAbsent<DeltaShuffleTag>();
-            if (!tag->echoed && deltaShuffleFraction > 0) {
-                if (!deltaShuffleTimer->isScheduled())
-                    startDeltaShuffleRound();
-                if (!std::isfinite(tag->subflowRate) || tag->subflowRate < 0 ||
-                        !std::isfinite(tag->connectionRate) || tag->connectionRate < tag->subflowRate)
-                    throw cRuntimeError("Invalid Delta sender rate telemetry");
-                const double need = 1.0 / std::max(tag->connectionRate, deltaRateFloor);
-                // L/x compensates packet frequency; dividing by this round's
-                // frozen duration keeps sample totals comparable when RTT changes.
-                const double mass = tcpPayloadBytes /
-                        (std::max(tag->subflowRate, deltaRateFloor) * deltaInterval.dbl());
-                const auto feedback = deltaShuffle.issue(deltaShuffle.epoch,
-                        deltaShuffleFraction * bandwidthBytesPerSecond, mass, need, deltaNeedGain);
-                tag->need = need;
-                // Signed shuffles add across links. A min/max filter would lose
-                // one side of a link's approximately balanced transfer.
-                tag->rawShuffle += feedback.raw;
-                tag->shuffle += feedback.returned;
-                ++tag->hops;
-                static const simsignal_t xSignal = registerSignal("mpOrbDeltaSubflowRate");
-                static const simsignal_t totalSignal = registerSignal("mpOrbDeltaConnectionRate");
-                static const simsignal_t needSignal = registerSignal("mpOrbDeltaNeed");
-                static const simsignal_t meanSignal = registerSignal("mpOrbDeltaMeanNeed");
-                static const simsignal_t rawSignal = registerSignal("mpOrbDeltaRawShuffle");
-                static const simsignal_t shuffleSignal = registerSignal("mpOrbDeltaReturnedShuffle");
-                static const simsignal_t netSignal = registerSignal("mpOrbDeltaRoundShuffle");
-                static const simsignal_t magnitudeSignal = registerSignal("mpOrbDeltaRoundShuffleMagnitude");
-                cSimpleModule::emit(xSignal, 8 * tag->subflowRate);
-                cSimpleModule::emit(totalSignal, 8 * tag->connectionRate);
-                cSimpleModule::emit(needSignal, need);
-                cSimpleModule::emit(meanSignal, feedback.meanNeed);
-                cSimpleModule::emit(rawSignal, 8 * feedback.raw);
-                cSimpleModule::emit(shuffleSignal, 8 * feedback.returned);
-                cSimpleModule::emit(netSignal, 8 * deltaShuffle.net);
-                cSimpleModule::emit(magnitudeSignal, 8 * deltaShuffle.magnitude);
-            }
-        }
-        if (tcpPayloadBytes > 0 && tcpHeader->findTag<OmegaPriceTag>()) {
-            tcpHeader->addTagIfAbsent<OmegaPriceTag>(); // Detach COW region tags.
-            auto price = tcpHeader->addTagIfAbsent<OmegaPriceTag>();
-            if (!price->echoed) {
-                if (price->hops == 0) {
-                    price->sampledAt = simTime();
-                    price->capacity = bandwidthBytesPerSecond;
-                }
-                price->hops++;
-                price->capacity = std::min(price->capacity, bandwidthBytesPerSecond);
-                if (priceTimer != nullptr) {
-                    price->pricedHops++;
-                    price->price += linkPrice.advertised;
-                }
-            }
-        }
+        bool selectedBottleneck = false;
+
+
         if (tcpPayloadBytes > 0) {
             double flowRttSeconds = 0;
             uint64_t flowId = 0;
@@ -708,6 +619,7 @@ Packet *PintQueue::pullPacket(cGate *gate)
                             decodedUtilization > intData.getPintUtilization() ||
                             (decodedUtilization == intData.getPintUtilization() &&
                             localFairShare < currentFairShare)) {
+                        selectedBottleneck = true;
                         intData.setPintPower(power);
                         intData.setPintUtilization(decodedUtilization);
                         intData.setHopId(hopId);
@@ -726,6 +638,66 @@ Packet *PintQueue::pullPacket(cGate *gate)
 
                     cSimpleModule::emit(pintDecodedUtilizationSignal, decodedUtilization);
                     cSimpleModule::emit(pintEncodedPowerSignal, static_cast<long>(power));
+                }
+            }
+        }
+        if (tcpPayloadBytes > 0 && tcpHeader->findTag<DeltaShuffleTag>()) {
+            tcpHeader->addTagIfAbsent<DeltaShuffleTag>(); // Detach COW region tags.
+            auto tag = tcpHeader->addTagIfAbsent<DeltaShuffleTag>();
+            if (!tag->echoed && selectedBottleneck) {
+                tag->need = tag->rawShuffle = tag->shuffle = 0;
+                tag->hops = 0;
+                tag->measurements.clear();
+            }
+            if (!tag->echoed && deltaShuffleFraction > 0) {
+                if (!deltaShuffleTimer->isScheduled())
+                    startDeltaShuffleRound();
+                if (!std::isfinite(tag->subflowRate) || tag->subflowRate < 0 ||
+                        !std::isfinite(tag->connectionRate) || tag->connectionRate < tag->subflowRate)
+                    throw cRuntimeError("Invalid Delta sender rate telemetry");
+                const double need = 1.0 / std::max(tag->connectionRate, deltaRateFloor);
+                // L/x compensates packet frequency; dividing by this round's
+                // frozen duration keeps sample totals comparable when RTT changes.
+                const double mass = tcpPayloadBytes /
+                        (std::max(tag->subflowRate, deltaRateFloor) * deltaInterval.dbl());
+                if (tag->senderControlled) {
+                    const auto feedback = deltaShuffle.measure(deltaShuffle.epoch,
+                            deltaShuffleFraction * bandwidthBytesPerSecond, mass, need, deltaNeedGain);
+                    if (selectedBottleneck) {
+                        tag->measurements.push_back({mass, need, feedback.meanNeed, feedback.coefficient});
+                        tag->need = need;
+                        tag->hops = 1;
+                    }
+                    static const simsignal_t meanSignal = registerSignal("mpOrbDeltaMeanNeed");
+                    static const simsignal_t coefficientSignal = registerSignal("mpOrbDeltaNeedCoefficient");
+                    cSimpleModule::emit(meanSignal, feedback.meanNeed);
+                    cSimpleModule::emit(coefficientSignal, feedback.coefficient);
+                }
+                else {
+                    const auto feedback = deltaShuffle.issue(deltaShuffle.epoch,
+                            deltaShuffleFraction * bandwidthBytesPerSecond, mass, need, deltaNeedGain, selectedBottleneck);
+                    if (selectedBottleneck) {
+                        tag->need = need;
+                        tag->rawShuffle = feedback.raw;
+                        tag->shuffle = feedback.returned;
+                        tag->hops = 1;
+                    }
+                    static const simsignal_t xSignal = registerSignal("mpOrbDeltaSubflowRate");
+                    static const simsignal_t totalSignal = registerSignal("mpOrbDeltaConnectionRate");
+                    static const simsignal_t needSignal = registerSignal("mpOrbDeltaNeed");
+                    static const simsignal_t meanSignal = registerSignal("mpOrbDeltaMeanNeed");
+                    static const simsignal_t rawSignal = registerSignal("mpOrbDeltaRawShuffle");
+                    static const simsignal_t shuffleSignal = registerSignal("mpOrbDeltaReturnedShuffle");
+                    static const simsignal_t netSignal = registerSignal("mpOrbDeltaRoundShuffle");
+                    static const simsignal_t magnitudeSignal = registerSignal("mpOrbDeltaRoundShuffleMagnitude");
+                    cSimpleModule::emit(xSignal, 8 * tag->subflowRate);
+                    cSimpleModule::emit(totalSignal, 8 * tag->connectionRate);
+                    cSimpleModule::emit(needSignal, need);
+                    cSimpleModule::emit(meanSignal, feedback.meanNeed);
+                    cSimpleModule::emit(rawSignal, 8 * feedback.raw);
+                    cSimpleModule::emit(shuffleSignal, 8 * feedback.returned);
+                    cSimpleModule::emit(netSignal, 8 * deltaShuffle.net);
+                    cSimpleModule::emit(magnitudeSignal, 8 * deltaShuffle.magnitude);
                 }
             }
         }

@@ -14,7 +14,6 @@
 #include <vector>
 
 #include "inet/queueing/queue/PacketQueue.h"
-#include "../../common/OmegaPrice.h"
 #include "../../common/DeltaShuffle.h"
 
 namespace inet {
@@ -45,14 +44,7 @@ class PintQueue : public PacketQueue
     void startDeltaShuffleRound();
     double deltaShuffleFraction = 0, deltaRateFloor = 0, deltaNeedGain = 0;
     cMessage *measurementTimer = nullptr;
-    cMessage *priceTimer = nullptr;
-    omega::LinkPrice linkPrice;
-    uint64_t priceOfferedBytes = 0;
-    simtime_t priceInterval;
-    double priceTarget = 0.95;
-    double priceIntegralGain = 0.2;
-    double priceProportionalGain = 1;
-    double priceMinRtt = 0.02;
+
 
     simtime_t avgRtt;
     simtime_t measurementInterval;
