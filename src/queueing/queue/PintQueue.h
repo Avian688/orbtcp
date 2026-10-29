@@ -14,7 +14,7 @@
 #include <vector>
 
 #include "inet/queueing/queue/PacketQueue.h"
-#include "../../common/DeltaShuffle.h"
+#include "inet/transportlayer/tcp_common/TcpHeader_m.h"
 
 namespace inet {
 namespace queueing {
@@ -37,12 +37,6 @@ class PintQueue : public PacketQueue
     static simsignal_t pintDecodedUtilizationSignal;
     static simsignal_t pintEncodedPowerSignal;
 
-    delta::LinkShuffle deltaShuffle;
-    cMessage *deltaShuffleTimer = nullptr;
-    simtime_t deltaInterval; // Frozen for the current shuffle round.
-    simtime_t deltaIntervalOverride; // 0 selects the queue's average RTT.
-    void startDeltaShuffleRound();
-    double deltaShuffleFraction = 0, deltaRateFloor = 0, deltaNeedGain = 0;
     cMessage *measurementTimer = nullptr;
 
 
@@ -94,6 +88,10 @@ class PintQueue : public PacketQueue
     virtual void initialize(int stage) override;
     virtual void handleParameterChange(const char *name) override;
     virtual void handleMessage(cMessage *message) override;
+
+    // Variant-specific telemetry runs after normal bottleneck selection.
+    virtual void processTelemetryExtension(const Ptr<tcp::TcpHeader>& header,
+            uint64_t payloadBytes, double bandwidthBytesPerSecond, bool selectedBottleneck) {}
 
     virtual void processMeasurementTimer();
     virtual void scheduleMeasurementTimer();

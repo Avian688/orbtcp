@@ -14,12 +14,15 @@ struct LinkShuffle {
     double previousMass = 0, previousMean = 0;
     double minNeed = 0, maxNeed = 0, previousRange = 0;
     double magnitude = 0, net = 0;
+    double rateMass = 0, previousMeanRate = 0; // Theta: sum(m * X), then its mean
 
     constexpr void beginRound(int64_t nextEpoch) {
         if (nextEpoch != epoch) {
             const bool adjacent = nextEpoch == epoch + 1 && mass > 0;
             previousMass = adjacent ? mass : 0;
             previousMean = adjacent ? needMass / mass : 0;
+            previousMeanRate = adjacent ? rateMass / mass : 0;
+            rateMass = 0;
             previousRange = adjacent ? maxNeed - minNeed : 0;
             mass = needMass = magnitude = net = 0;
             epoch = nextEpoch;

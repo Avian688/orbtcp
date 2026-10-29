@@ -12,8 +12,11 @@ class DeltaShuffleTag : public TagBase {
     double rawShuffle = 0, shuffle = 0; // selected bottleneck rate increments, bytes/s
     unsigned long long serial = 0; // new for each data transmission
     unsigned int hops = 0;
+    int bottleneckId = -1; // Must match the final INT bottleneck, including plain PINT hops.
     bool echoed = false;
     bool senderControlled = false;
+    bool rateControlled = false; // Theta uses total rate instead of inverse need.
+    double meanConnectionRate = 0, rateAllowance = 0, packetMass = 0;
     // Selected bottleneck measurement (zero or one record). mass is dimensionless, need/meanNeed s/B,
     // coefficient (B/s)^2. No signed grant is calculated in the switch.
     struct Measurement { double mass, need, meanNeed, coefficient; };
@@ -23,7 +26,8 @@ class DeltaShuffleTag : public TagBase {
         TagBase::parsimPack(b);
         b->pack(subflowRate); b->pack(connectionRate); b->pack(need);
         b->pack(rawShuffle); b->pack(shuffle); b->pack(serial); b->pack(hops); b->pack(echoed);
-        b->pack(senderControlled);
+        b->pack(rateControlled); b->pack(meanConnectionRate); b->pack(rateAllowance); b->pack(packetMass);
+        b->pack(senderControlled); b->pack(bottleneckId);
         b->pack(static_cast<unsigned int>(measurements.size()));
         for (const auto& m : measurements) {
             b->pack(m.mass); b->pack(m.need); b->pack(m.meanNeed); b->pack(m.coefficient);
@@ -33,7 +37,8 @@ class DeltaShuffleTag : public TagBase {
         TagBase::parsimUnpack(b);
         b->unpack(subflowRate); b->unpack(connectionRate); b->unpack(need);
         b->unpack(rawShuffle); b->unpack(shuffle); b->unpack(serial); b->unpack(hops); b->unpack(echoed);
-        b->unpack(senderControlled);
+        b->unpack(rateControlled); b->unpack(meanConnectionRate); b->unpack(rateAllowance); b->unpack(packetMass);
+        b->unpack(senderControlled); b->unpack(bottleneckId);
         unsigned int count;
         b->unpack(count);
         measurements.resize(count);
