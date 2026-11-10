@@ -49,14 +49,9 @@ simsignal_t IntQueue::txBytesSignal = cComponent::registerSignal("txBytes");
 
 IntQueue::~IntQueue()
 {
-    if (averageRttTimerMsg->isScheduled()) {
-            cancelEvent(averageRttTimerMsg);
-        }
-        if (bandwidthRecorderTimerMsg->isScheduled()) {
-            cancelEvent(bandwidthRecorderTimerMsg);
-        }
-        delete averageRttTimerMsg;
-        delete bandwidthRecorderTimerMsg;
+    // A dynamically built queue can be deleted before initialization completes.
+    cancelAndDelete(averageRttTimerMsg);
+    cancelAndDelete(bandwidthRecorderTimerMsg);
 }
 
 void IntQueue::initialize(int stage)

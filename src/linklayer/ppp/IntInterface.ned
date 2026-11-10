@@ -12,15 +12,18 @@ import inet.networklayer.common.NetworkInterface;
 import inet.queueing.contract.IPacketQueue;
 import inet.queueing.contract.ITrafficConditioner;
 import inet.linklayer.ppp.Ppp;
-import orbtcp.queueing.queue.IntQueue;
 
 //
-// This module implements a IN-Network telemetry network interface.
+// This module implements a PPP interface with a replaceable packet queue.
 //
 module IntInterface extends NetworkInterface like IPppInterface
 {
     parameters:
         string interfaceTableModule;
+        // LeoChannelConstructor supplies this fallback before building the queue.
+        int defaultPacketCapacity = default(10000);
+        // Pattern assignment: queues without packetCapacity are also supported.
+        queue.packetCapacity = default(defaultPacketCapacity);
         *.interfaceTableModule = default(absPath(this.interfaceTableModule));
     gates:
         input upperLayerIn;
@@ -35,9 +38,8 @@ module IntInterface extends NetworkInterface like IPppInterface
             parameters:
                 @display("p=300,100");
         }
-        queue: IntQueue {
+        queue: <default("orbtcp.queueing.queue.IntQueue")> like IPacketQueue {
             parameters:
-                packetCapacity = default(10000);
                 @display("p=300,200;q=l2queue");
         }
         ppp: Ppp {
