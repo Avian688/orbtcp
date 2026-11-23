@@ -851,15 +851,20 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
             tcpAlgorithm->rttMeasurementCompleteUsingTS(getTSecr(tcpHeader));
         // Note: If TS is disabled the RTT measurement is completed in TcpBaseAlg::receivedDataAck()
 
-        uint32_t discardUpToSeq = state->snd_una;
+        uint32_t payloadAck = state->snd_una;
 
         // our FIN acked?
         if (state->send_fin && tcpHeader->getAckNo() == state->snd_fin_seq + 1) {
             // set flag that our FIN has been acked
             EV_DETAIL << "ACK acks our FIN\n";
             state->fin_ack_rcvd = true;
-            discardUpToSeq--; // the FIN sequence number is not real data
+            payloadAck--; // the send queue contains only payload
         }
+
+        // A piggybacked FIN occupies a scoreboard byte. A standalone FIN
+        // sent via sendFin() may be absent from the scoreboard.
+        const uint32_t scoreboardEnd = rexmitQueue->getBufferEndSeq();
+        const uint32_t scoreboardAck = seqLE(state->snd_una, scoreboardEnd) ? state->snd_una : scoreboardEnd;
 
         if (rack_enabled)
         {
@@ -874,7 +879,7 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
 
         // acked data no longer needed in rexmit queue
         if (rexmitQueue->isUpdatedSackEnabled()) {
-            std::list<uint32_t> skbDeliveredList = rexmitQueue->getDiscardList(discardUpToSeq);
+            std::list<uint32_t> skbDeliveredList = rexmitQueue->getDiscardList(scoreboardAck);
             for (uint32_t endSeqNo : skbDeliveredList) {
                 bool wasRetransmitted = rexmitQueue->isRetransmitted(endSeqNo);
                 rackAdvance(endSeqNo, tcpHeader);
@@ -887,12 +892,12 @@ bool OrbtcpConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<const 
         }
 
         // acked data no longer needed in send queue
-        sendQueue->discardUpTo(discardUpToSeq);
+        sendQueue->discardUpTo(payloadAck);
         enqueueData();
 
         // acked data no longer needed in rexmit queue
         if (state->sack_enabled){
-            rexmitQueue->discardUpTo(discardUpToSeq);
+            rexmitQueue->discardUpTo(scoreboardAck);
         }
 
         updateWndInfo(tcpHeader);
@@ -1010,48 +1015,30 @@ void OrbtcpConnection::sendIntAck(const IntDataVec& intData)
 
 uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
 {
-    // FIXME check it: where is the right place for the next code (sacked/rexmitted)
-    if (state->sack_enabled && state->afterRto) {
-        // check rexmitQ and try to forward snd_nxt before sending new data
-        uint32_t forward = rexmitQueue->checkRexmitQueueForSackedOrRexmittedSegments(state->snd_nxt);
-
-        if (forward > 0) {
-            EV_INFO << "sendSegment(" << bytes << ") forwarded " << forward << " bytes of snd_nxt from " << state->snd_nxt;
-            state->snd_nxt += forward;
-            EV_INFO << " to " << state->snd_nxt << endl;
-            EV_DETAIL << rexmitQueue->detailedInfo();
-        }
+    uint32_t sendSeq = state->snd_nxt;
+    if (state->sack_enabled && state->afterRto &&
+            seqGE(sendSeq, rexmitQueue->getBufferStartSeq()) && seqLess(sendSeq, rexmitQueue->getBufferEndSeq())) {
+        sendSeq += rexmitQueue->checkRexmitQueueForSackedOrRexmittedSegments(sendSeq);
     }
 
-    uint32_t buffered = sendQueue->getBytesAvailable(state->snd_nxt);
+    const uint32_t queueEnd = sendQueue->getBufferEndSeq();
+    if (seqLess(sendSeq, sendQueue->getBufferStartSeq()) || seqGreater(sendSeq, queueEnd))
+        return 0;
 
-    if (bytes > buffered) // last segment?
-        bytes = buffered;
+    const uint32_t sentBytes = std::min({bytes, sendQueue->getBytesAvailable(sendSeq), state->snd_mss});
+    const uint32_t payloadEnd = sendSeq + sentBytes;
+    const bool sendFinHere = state->send_fin && !state->fin_ack_rcvd &&
+            payloadEnd == state->snd_fin_seq && seqGE(state->snd_fin_seq, state->snd_una);
+    if (sentBytes == 0 && (!sendFinHere || sendSeq != queueEnd))
+        return 0;
 
-    // if header options will be added, this could reduce the number of data bytes allowed for this segment,
-    // because following condition must to be respected:
-    //     bytes + options_len <= snd_mss
     const auto& tmpTcpHeader = makeShared<TcpHeader>();
     tmpTcpHeader->setAckBit(true); // needed for TS option, otherwise TSecr will be set to 0
     writeHeaderOptions(tmpTcpHeader);
-    //uint options_len = B(tmpTcpHeader->getHeaderLength() - TCP_MIN_HEADER_LENGTH).get();
 
-    //ASSERT(options_len < state->snd_mss);
-
-    //if (bytes + options_len > state->snd_mss)
-    //    bytes = state->snd_mss - options_len;
-    bytes = state->snd_mss;
-    uint32_t sentBytes = bytes;
-
-    // send one segment of 'bytes' bytes from snd_nxt, and advance snd_nxt
-    Packet *tcpSegment = sendQueue->createSegmentWithBytes(state->snd_nxt, bytes);
+    Packet *tcpSegment = sendQueue->createSegmentWithBytes(sendSeq, sentBytes);
     const auto& tcpHeader = makeShared<TcpHeader>();
-    tcpHeader->setSequenceNo(state->snd_nxt);
-    ASSERT(tcpHeader != nullptr);
-
-    // Remember old_snd_next to store in SACK rexmit queue.
-    uint32_t old_snd_nxt = state->snd_nxt;
-
+    tcpHeader->setSequenceNo(sendSeq);
     tcpHeader->setAckNo(state->rcv_nxt);
     tcpHeader->setAckBit(true);
     tcpHeader->setWindow(updateRcvWnd());
@@ -1065,23 +1052,17 @@ uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
 
     // TODO when to set PSH bit?
     // TODO set URG bit if needed
-    ASSERT(bytes == tcpSegment->getByteLength());
-
-    state->snd_nxt += bytes;
+    ASSERT(sentBytes == tcpSegment->getByteLength());
+    tcpHeader->setFinBit(sendFinHere);
+    state->snd_nxt = payloadEnd + (sendFinHere ? 1 : 0);
 
     // check if afterRto bit can be reset
     if (state->afterRto && seqGE(state->snd_nxt, state->snd_max))
         state->afterRto = false;
 
-    if (state->send_fin && state->snd_nxt == state->snd_fin_seq) {
-        EV_DETAIL << "Setting FIN on segment\n";
-        tcpHeader->setFinBit(true);
-        state->snd_nxt = state->snd_fin_seq + 1;
-    }
-
     // if sack_enabled copy region of tcpHeader to rexmitQueue
     if (state->sack_enabled){
-        rexmitQueue->enqueueSentData(old_snd_nxt, state->snd_nxt);
+        rexmitQueue->enqueueSentData(sendSeq, state->snd_nxt);
         if ((pace || rack_enabled) && rexmitQueue->isUpdatedSackEnabled()) {
             rexmitQueue->skbSent(state->snd_nxt, m_firstSentTime, simTime(), m_deliveredTime,
                     m_bytesInFlight + sentBytes, false, m_delivered, m_appLimited);
@@ -1095,24 +1076,26 @@ uint32_t OrbtcpConnection::sendSegment(uint32_t bytes)
 
     ASSERT(tcpHeader->getHeaderLength() == tmpTcpHeader->getHeaderLength());
 
-    auto *orbAlgorithm = dynamic_cast<OrbtcpFamily *>(tcpAlgorithm);
-    auto intTag = tcpHeader->addTagIfAbsent<IntTag>();
-    const simtime_t estimatedRtt = orbAlgorithm->getEstimatedRtt();
-    const uint32_t cwnd = orbAlgorithm->getCwnd();
-    intTag->setConnId(static_cast<unsigned long>(orbAlgorithm->getConnId()));
-    intTag->setRtt(estimatedRtt);
-    intTag->setCwnd(cwnd);
-    if (orbAlgorithm->usesPintTelemetry()) {
-        // The AvgRTT ablation consumes the ordinary per-flow TCP RTT. The
-        // compact estimator inputs are populated only when AvgRTT is enabled.
-        intTag->setRtt(orbAlgorithm->getRtt());
-        if (tcpMain->par("pintUseAverageRtt").boolValue()) {
-            intTag->setPintBaseRttCode(pint::encodeBaseRtt(estimatedRtt.dbl()));
-            intTag->setPintCwndCode(pint::encodeCwnd(cwnd));
+    if (sentBytes > 0) {
+        auto *orbAlgorithm = dynamic_cast<OrbtcpFamily *>(tcpAlgorithm);
+        auto intTag = tcpHeader->addTagIfAbsent<IntTag>();
+        const simtime_t estimatedRtt = orbAlgorithm->getEstimatedRtt();
+        const uint32_t cwnd = orbAlgorithm->getCwnd();
+        intTag->setConnId(static_cast<unsigned long>(orbAlgorithm->getConnId()));
+        intTag->setRtt(estimatedRtt);
+        intTag->setCwnd(cwnd);
+        if (orbAlgorithm->usesPintTelemetry()) {
+            // The AvgRTT ablation consumes the ordinary per-flow TCP RTT. The
+            // compact estimator inputs are populated only when AvgRTT is enabled.
+            intTag->setRtt(orbAlgorithm->getRtt());
+            if (tcpMain->par("pintUseAverageRtt").boolValue()) {
+                intTag->setPintBaseRttCode(pint::encodeBaseRtt(estimatedRtt.dbl()));
+                intTag->setPintCwndCode(pint::encodeCwnd(cwnd));
+            }
         }
+        intTag->setInitialPhase(orbAlgorithm->getInitialPhase());
+        intTag->setRetrans(rexmitQueue->isRetransmitted(state->snd_nxt));
     }
-    intTag->setInitialPhase(orbAlgorithm->getInitialPhase());
-    intTag->setRetrans(rexmitQueue->isRetransmitted(state->snd_nxt));
 
     calculateAppLimited();
 
