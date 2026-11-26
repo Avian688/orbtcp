@@ -36,6 +36,7 @@ class OrbtcpPintFlavour : public OrbtcpFlavour
     virtual void processRexmitTimer(TcpEventCode& event) override;
     virtual void rackLossDetected() override;
     virtual bool usesPintTelemetry() const override { return true; }
+    uint32_t targetWindowForIncrease(double u, uint32_t increase, bool cwndLimited) const;
 
   public:
     OrbtcpPintFlavour() = default;

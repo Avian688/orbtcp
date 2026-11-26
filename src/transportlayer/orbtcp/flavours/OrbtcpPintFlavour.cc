@@ -217,7 +217,7 @@ double OrbtcpPintFlavour::measureInflight(const IntDataVec& intData)
     return state->u;
 }
 
-uint32_t OrbtcpPintFlavour::computeWnd(double u, bool updateWc)
+uint32_t OrbtcpPintFlavour::targetWindowForIncrease(double u, uint32_t increase, bool cwndLimited) const
 {
     // Fast reactions use the last committed window, so repeated ACKs cannot
     // compound the per-RTT additive increase.
@@ -229,22 +229,25 @@ uint32_t OrbtcpPintFlavour::computeWnd(double u, bool updateWc)
         // Established flows account for aggregate U while the newcomer advances
         // by its share of the bounded startup budget toward the N-based cap.
         targetWindow = std::min(
-                committedWindow + state->additiveIncrease,
+                committedWindow + increase,
                 static_cast<double>(state->ssthresh));
     }
     else {
         targetWindow = u >= state->eta ?
-                committedWindow / (u / state->eta) + state->additiveIncrease :
-                committedWindow + state->additiveIncrease;
+                committedWindow / (u / state->eta) + increase :
+                committedWindow + increase;
     }
 
-    uint32_t targetWnd = clampWindow(targetWindow);
-    const bool cwndLimited = isCwndLimited();
-    targetWnd = limitCwndGrowth(targetWnd, cwndLimited);
     // Match TcpPacedFamily::sendData's one-MSS floor before recording,
     // committing prevWnd or calculating pacing. The growth gate must not
     // preserve an old sub-MSS value that the sender would raise afterward.
-    targetWnd = std::max(targetWnd, state->snd_mss);
+    return std::max(limitCwndGrowth(clampWindow(targetWindow), cwndLimited), state->snd_mss);
+}
+
+uint32_t OrbtcpPintFlavour::computeWnd(double u, bool updateWc)
+{
+    const bool cwndLimited = isCwndLimited();
+    const uint32_t targetWnd = targetWindowForIncrease(u, state->additiveIncrease, cwndLimited);
     conn->emit(cwndLimitedSignal, cwndLimited);
 
     if (updateWc) {
